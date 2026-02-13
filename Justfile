@@ -184,6 +184,7 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
     args+="--rootfs=btrfs"
 
     BUILDTMP=$(mktemp -d -t _build-bib.XXXXXXXXXX)
+    IMGSTORAGETMP=$(mktemp -d -t _build-bib-imgstorage.XXXXXXXXXX)
 
     sudo podman run \
       --rm \
@@ -194,6 +195,7 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
       --security-opt label=type:unconfined_t \
       -v $(pwd)/${config}:/config.toml:ro \
       -v $BUILDTMP:/output \
+      -v $IMGSTORAGETMP:/sysroot/ostree/bootc/storage:z \
       -v /var/lib/containers/storage:/var/lib/containers/storage \
       "${bib_image}" \
       ${args} \
@@ -202,6 +204,7 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
     mkdir -p "{{ output_dir }}"
     sudo mv -f $BUILDTMP/* "{{ output_dir }}/"
     sudo rmdir $BUILDTMP
+    sudo rm -rf $IMGSTORAGETMP
     sudo chown -R $USER:$USER "{{ output_dir }}/"
 
 # Podman builds the image from the Containerfile and creates a bootable image
