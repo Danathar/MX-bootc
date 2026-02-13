@@ -1,0 +1,28 @@
+---
+name: Sync Template
+
+on:
+  workflow_dispatch:
+  # Uncomment to enable automatic sync PRs from upstream.
+  # schedule:
+  #   - cron: "0 6 * * 1"
+
+jobs:
+  template-sync:
+    name: Sync from ublue-os/image-template
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Template Sync
+        uses: AndreasAugustin/actions-template-sync@v2
+        with:
+          source_repo_path: ublue-os/image-template
+          upstream_branch: main
+          pr_labels: template_sync

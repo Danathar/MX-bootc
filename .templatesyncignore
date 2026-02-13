@@ -1,0 +1,9 @@
+# Default ignore list for template sync updates.
+# Keep repo-specific customizations from being overwritten by upstream sync PRs.
+
+Containerfile
+Justfile
+artifacthub-repo.yml
+README.md
+build_files/**
+disk_config/**
