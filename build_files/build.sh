@@ -5,7 +5,10 @@ set -ouex pipefail
 MX_SUITE="trixie"
 MX_REPO_BASE="https://mxrepo.com/mx/repo"
 MX_KEYRING="/usr/share/keyrings/mx-archive-keyring.gpg"
-MX_REPO_SIGNING_FPR="8AFEB908376620CCDBFBBB730D0D91C3655D0AF4"
+MX_REPO_SIGNING_FPRS=(
+  "8AFEB908376620CCDBFBBB730D0D91C3655D0AF4"
+  "0FC0E9FB5B3806B71651351259C16711EFA6FD38"
+)
 
 # Make sure Debian sources include components commonly used by MX packages.
 # Keep third-party source files untouched.
@@ -52,16 +55,18 @@ GNUPGHOME="$(mktemp -d)"
 chmod 700 "${GNUPGHOME}"
 gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${mx_keybox}" --export > "${MX_KEYRING}"
 
-# mx-gpg-keys can lag behind active repo signing keys. Import fallback key if missing.
-if ! gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${MX_KEYRING}" \
-  --list-keys "${MX_REPO_SIGNING_FPR}" >/dev/null 2>&1; then
-  curl -fsSL \
-    "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${MX_REPO_SIGNING_FPR}" \
-    -o /tmp/mx-repo-signing-key.asc
-  gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${MX_KEYRING}" \
-    --import /tmp/mx-repo-signing-key.asc
-  rm -f /tmp/mx-repo-signing-key.asc
-fi
+# mx-gpg-keys can lag behind active repo signing keys. Import fallback keys if missing.
+for fpr in "${MX_REPO_SIGNING_FPRS[@]}"; do
+  if ! gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${MX_KEYRING}" \
+    --list-keys "${fpr}" >/dev/null 2>&1; then
+    curl -fsSL \
+      "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${fpr}" \
+      -o /tmp/mx-repo-signing-key.asc
+    gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${MX_KEYRING}" \
+      --import /tmp/mx-repo-signing-key.asc
+    rm -f /tmp/mx-repo-signing-key.asc
+  fi
+done
 
 rm -rf "${GNUPGHOME}"
 
