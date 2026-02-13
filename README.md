@@ -4,7 +4,7 @@ Bootable container image definition for an MX Linux KDE-style system, based on D
 
 ## What this image does
 
-- Uses `ghcr.io/frostyard/debian-bootc-core:latest` as the bootc-ready Debian base.
+- Starts from `docker.io/library/debian:stable` and bootstraps `bootc`/`ostree` during build.
 - Adds MX repository access for `bookworm` with keyring validation.
 - Installs KDE plus MX KDE defaults/tools (`mx-apps-kde`, `desktop-defaults-mx-kde`, and related theme/default packages).
 - Rebuilds initramfs and finalizes the rootfs for bootc deploys.

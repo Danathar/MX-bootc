@@ -7,11 +7,16 @@ MX_REPO_BASE="https://mxrepo.com/mx/repo"
 MX_KEYRING="/usr/share/keyrings/mx-archive-keyring.gpg"
 
 # Make sure Debian sources include components commonly used by MX packages.
+# Keep third-party source files untouched.
 find /etc/apt -type f -name "*.sources" -print0 | while IFS= read -r -d '' file; do
-  sed -ri 's/^Components: .*/Components: main contrib non-free non-free-firmware/' "$file"
+  if grep -Eq '^URIs:\s+https?://.*debian\.org' "$file"; then
+    sed -ri 's/^Components: .*/Components: main contrib non-free non-free-firmware/' "$file"
+  fi
 done
 find /etc/apt -type f -name "*.list" -print0 | while IFS= read -r -d '' file; do
-  sed -ri 's#^(deb(-src)?\s+\S+\s+\S+\s+).*$#\1main contrib non-free non-free-firmware#' "$file"
+  if grep -Eq 'https?://.*debian\.org' "$file"; then
+    sed -ri 's#^(deb(-src)?\s+\S+\s+\S+\s+).*$#\1main contrib non-free non-free-firmware#' "$file"
+  fi
 done
 
 apt-get update -y
