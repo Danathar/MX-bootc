@@ -1,57 +1,74 @@
-# mx25-kde-bootc
+# MX-bootc
 
-Bootable container image definition for an MX Linux KDE-style system, based on Debian bootc.
+## HIGHLY EXPERIMENTAL - NOT AN OFFICIAL MX LINUX BUILD
 
-## What this image does
+This repository is **HIGHLY experimental** and **NOT** affiliated with or endorsed by the MX Linux project.
 
-- Starts from `docker.io/library/debian:stable` and bootstraps `bootc`/`ostree` during build.
-- Adds MX repository access for `trixie` with keyring validation.
-- Installs KDE plus MX KDE defaults/tools (`mx-apps-kde`, `desktop-defaults-mx-kde`, and related theme/default packages).
-- Rebuilds initramfs and finalizes the rootfs for bootc deploys.
+It may break. It is probably broken in multiple ways right now. Use it only for testing.
 
-## Important assumptions
+The goal of this repository is to test whether GPT-5.3-codex can produce a bootc-based MX Linux KDE image that can actually boot.
 
-- MX 25.x is based on Debian `trixie`, and MX packages are sourced from `https://mxrepo.com/mx/repo`.
-- This repository is a starting point for iterative testing, not a verified byte-for-byte rebuild of the official MX KDE ISO.
+## What this project currently does
 
-## Quick start
+- Builds from Debian `trixie` and bootstraps `bootc`/`ostree` during image build.
+- Adds MX repository access and installs MX KDE-oriented packages.
+- Produces a bootable container image intended for bootc-based installs/testing.
 
-1. Build the image locally:
+This is not a byte-for-byte recreation of the official MX Linux KDE ISO build process.
 
-```bash
-cd image-template
-just build localhost/mx25-kde-bootc latest
-```
+## Build the container image
 
-2. Build a VM disk image:
+Local example:
 
 ```bash
-just build-qcow2 localhost/mx25-kde-bootc latest
+just build localhost/mx-bootc latest
 ```
 
-3. (Optional) Run the VM output:
+GitHub Actions publish target:
+
+```text
+ghcr.io/<your-github-user>/mx-bootc:latest
+```
+
+## Build disk images from the container image
+
+Build a QCOW2 disk image:
 
 ```bash
-just run-vm-qcow2 localhost/mx25-kde-bootc latest
+just build-qcow2 localhost/mx-bootc latest
 ```
 
-## Switching a host to this image
-
-After you publish your image to a registry:
+Build an installer ISO:
 
 ```bash
-sudo bootc switch ghcr.io/<username>/mx25-kde-bootc:latest
+just build-iso localhost/mx-bootc latest
 ```
 
-## Config files you probably want to edit
+Default outputs:
 
-- `Containerfile`: base image and build flow.
-- `build_files/build.sh`: MX repo setup + package selection.
-- `disk_config/iso.toml`: installer `bootc switch` target.
-- `.github/workflows/build.yml`: image metadata and publish behavior.
+- `output/qcow2/disk.qcow2`
+- `output/bootiso/install.iso`
 
-## Known gaps
+## Configure users/passwords in TOML (installer time)
 
-- Package set parity with official MX KDE media is approximate.
-- No separate AHS/non-AHS variant split yet.
-- NVIDIA/specialized hardware paths are not yet tuned.
+User creation and passwords should be configured in installer TOML/kickstart, not hardcoded into the container image:
+
+- `disk_config/iso.toml`
+- `disk_config/iso-kde.toml`
+
+Current example in those files:
+
+```text
+rootpw --plaintext changeme
+user --name=mx --groups=wheel --password=changeme --plaintext --gecos="MX User"
+```
+
+These settings are applied during install and are the right place for initial credentials.
+They are not part of the immutable image build and therefore are not expected to be reset by a normal `bootc upgrade`.
+
+## Important files
+
+- `Containerfile`: image build order.
+- `build_files/build.sh`: package and repository setup.
+- `disk_config/iso.toml`: installer kickstart/user config.
+- `.github/workflows/build.yml`: build, push, and signing pipeline.

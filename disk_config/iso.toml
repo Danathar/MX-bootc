@@ -4,7 +4,7 @@ rootpw --plaintext changeme
 user --name=mx --groups=wheel --password=changeme --plaintext --gecos="MX User"
 
 %post
-bootc switch --mutate-in-place --transport registry ghcr.io/YOUR_GH_USERNAME/mx25-kde-bootc:latest
+bootc switch --mutate-in-place --transport registry ghcr.io/YOUR_GH_USERNAME/mx-bootc:latest
 %end
 """
 

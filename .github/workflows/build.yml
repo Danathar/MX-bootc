@@ -165,12 +165,61 @@ jobs:
 
       - name: Sign container image
         if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        shell: bash
         run: |
+          set -euo pipefail
+
           IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
-          for tag in ${{ steps.metadata.outputs.tags }}; do
-            cosign sign -y --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
-          done
+          DIGEST="${{ steps.push.outputs.digest }}"
+
+          if [[ -z "${DIGEST}" ]]; then
+            echo "::warning::No image digest from push step; skipping signing."
+            exit 0
+          fi
+
+          if [[ "${DIGEST}" != sha256:* ]]; then
+            DIGEST="sha256:${DIGEST}"
+          fi
+          IMAGE_REF="${IMAGE_FULL}@${DIGEST}"
+
+          key_file="$(mktemp)"
+          cleanup() {
+            rm -f "${key_file}"
+          }
+          trap cleanup EXIT
+
+          load_signing_key() {
+            local raw_key="$1"
+
+            # Raw PEM with real newlines
+            if printf '%s\n' "${raw_key}" > "${key_file}" && grep -q "BEGIN .*PRIVATE KEY" "${key_file}"; then
+              return 0
+            fi
+
+            # PEM stored with escaped newlines (\n)
+            if printf '%b\n' "${raw_key}" > "${key_file}" && grep -q "BEGIN .*PRIVATE KEY" "${key_file}"; then
+              return 0
+            fi
+
+            # Base64-encoded PEM
+            if printf '%s' "${raw_key}" | base64 -d > "${key_file}" 2>/dev/null && grep -q "BEGIN .*PRIVATE KEY" "${key_file}"; then
+              return 0
+            fi
+
+            return 1
+          }
+
+          if [[ -n "${COSIGN_PRIVATE_KEY:-}" ]]; then
+            if ! load_signing_key "${COSIGN_PRIVATE_KEY}"; then
+              echo "::error::SIGNING_SECRET is not a valid cosign private key (PEM, escaped PEM, or base64 PEM)."
+              exit 1
+            fi
+            cosign sign -y --key "${key_file}" "${IMAGE_REF}"
+          else
+            echo "::notice::SIGNING_SECRET not set; using keyless signing."
+            cosign sign -y "${IMAGE_REF}"
+          fi
         env:
-          TAGS: ${{ steps.push.outputs.digest }}
           COSIGN_EXPERIMENTAL: false
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+          COSIGN_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
