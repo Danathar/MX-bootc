@@ -6,6 +6,7 @@ COPY build_files /
 FROM docker.io/library/debian:trixie
 
 COPY system_files /
+LABEL containers.bootc="1"
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG BUILD_ID=${BUILD_ID}

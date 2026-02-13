@@ -100,6 +100,7 @@ build $target_image=image_name $tag=default_tag:
     podman build \
         "${BUILD_ARGS[@]}" \
         --pull=newer \
+        --label "containers.bootc=1" \
         --tag "${target_image}:${tag}" \
         .
 
