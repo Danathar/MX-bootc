@@ -5,6 +5,7 @@ set -ouex pipefail
 MX_SUITE="bookworm"
 MX_REPO_BASE="https://mxrepo.com/mx/repo"
 MX_KEYRING="/usr/share/keyrings/mx-archive-keyring.gpg"
+MX_REPO_SIGNING_FPR="8AFEB908376620CCDBFBBB730D0D91C3655D0AF4"
 
 # Make sure Debian sources include components commonly used by MX packages.
 # Keep third-party source files untouched.
@@ -50,6 +51,18 @@ mx_keybox="/usr/share/mx-gpg-keys/mx-gpg-keyring"
 GNUPGHOME="$(mktemp -d)"
 chmod 700 "${GNUPGHOME}"
 gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${mx_keybox}" --export > "${MX_KEYRING}"
+
+# mx-gpg-keys can lag behind active repo signing keys. Import fallback key if missing.
+if ! gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${MX_KEYRING}" \
+  --list-keys "${MX_REPO_SIGNING_FPR}" >/dev/null 2>&1; then
+  curl -fsSL \
+    "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${MX_REPO_SIGNING_FPR}" \
+    -o /tmp/mx-repo-signing-key.asc
+  gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${MX_KEYRING}" \
+    --import /tmp/mx-repo-signing-key.asc
+  rm -f /tmp/mx-repo-signing-key.asc
+fi
+
 rm -rf "${GNUPGHOME}"
 
 cat > /etc/apt/sources.list.d/mx.list <<EOF_MX
