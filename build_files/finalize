@@ -12,6 +12,22 @@ if [ ! -d /sysroot ]; then
   ln -s sysroot/ostree ostree
 fi
 
+# bootc-image-builder invokes `bootc install` which initializes a container
+# image store under /var/lib/containers. Ensure baseline paths exist.
+mkdir -p /var/lib/containers/storage
+mkdir -p /run/containers/storage
+
+# Provide a basic storage.conf if none exists.
+if [ ! -f /etc/containers/storage.conf ]; then
+  mkdir -p /etc/containers
+  cat > /etc/containers/storage.conf <<'EOF'
+[storage]
+driver = "overlay"
+runroot = "/run/containers/storage"
+graphroot = "/var/lib/containers/storage"
+EOF
+fi
+
 # Force first-boot identity and ssh host key generation.
 rm -f /etc/machine-id
 rm -f /etc/ssh/ssh_host_*
