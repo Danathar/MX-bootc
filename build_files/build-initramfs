@@ -5,6 +5,11 @@ set -ouex pipefail
 # Build initramfs for the newest kernel in /usr/lib/modules.
 KERNEL_VERSION="$(basename "$(find /usr/lib/modules -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)")"
 
+if [ -z "${KERNEL_VERSION}" ]; then
+  echo "No kernel found under /usr/lib/modules; cannot generate initramfs" >&2
+  exit 1
+fi
+
 dracut --force --no-hostonly --reproducible --zstd --verbose --add etc-overlay \
   --kver "${KERNEL_VERSION}" "/usr/lib/modules/${KERNEL_VERSION}/initramfs.img"
 

@@ -26,6 +26,24 @@ done
 apt-get update -y
 apt-get install -y --no-install-recommends ca-certificates curl gnupg gzip
 
+# Core runtime packages needed for bootc images and initramfs generation.
+apt-get install -y \
+  btrfs-progs \
+  cryptsetup \
+  dracut \
+  e2fsprogs \
+  fdisk \
+  iproute2 \
+  iputils-ping \
+  linux-image-amd64 \
+  network-manager \
+  parted \
+  rsync \
+  skopeo \
+  sudo \
+  xfsprogs \
+  zstd
+
 # Bootstrap MX signing keys from the official mx-gpg-keys package.
 mx_keys_rel_path="$({
   curl -fsSL "${MX_REPO_BASE}/dists/${MX_SUITE}/main/binary-amd64/Packages.gz" \
