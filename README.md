@@ -54,7 +54,6 @@ Default outputs:
 User creation and passwords should be configured in installer TOML/kickstart, not hardcoded into the container image:
 
 - `disk_config/iso.toml`
-- `disk_config/iso-kde.toml`
 
 Current example in those files:
 
