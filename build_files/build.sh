@@ -26,7 +26,15 @@ apt-get install -y --no-install-recommends ca-certificates curl gnupg gzip
 mx_keys_rel_path="$({
   curl -fsSL "${MX_REPO_BASE}/dists/${MX_SUITE}/main/binary-amd64/Packages.gz" \
     | gzip -dc \
-    | awk 'BEGIN{RS="";FS="\n"} $1=="Package: mx-gpg-keys" {for(i=1;i<=NF;i++) if($i ~ /^Filename: /){print substr($i,11); exit}}'
+    | awk '
+        BEGIN{RS="";FS="\n"; path=""}
+        $1=="Package: mx-gpg-keys" {
+          for(i=1;i<=NF;i++) {
+            if($i ~ /^Filename: /) { path=substr($i,11) }
+          }
+        }
+        END { print path }
+      '
 })"
 
 if [ -z "${mx_keys_rel_path}" ]; then
