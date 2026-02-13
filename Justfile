@@ -124,7 +124,20 @@ _rootful_load_image $target_image=image_name $tag=default_tag:
 
     # Check if already running as root or under sudo
     if [[ -n "${SUDO_USER:-}" || "${UID}" -eq "0" ]]; then
-        echo "Already root or running under sudo, no need to load image from user podman."
+        if [[ "${target_image}" == localhost/* ]]; then
+            # localhost images are local-only; cannot be pulled remotely.
+            if podman image exists "${target_image}:${tag}"; then
+                echo "Using existing root-local image ${target_image}:${tag}"
+                exit 0
+            fi
+            echo "Image ${target_image}:${tag} not found in root podman storage."
+            echo "Re-run without sudo so Just can copy from user podman storage."
+            exit 1
+        fi
+
+        # For registry-backed images, always pull to avoid stale root cache.
+        podman pull "${target_image}:${tag}"
+        echo "Pulled ${target_image}:${tag} into root podman storage."
         exit 0
     fi
 
