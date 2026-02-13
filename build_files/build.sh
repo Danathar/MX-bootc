@@ -44,6 +44,21 @@ apt-get install -y \
   xfsprogs \
   zstd
 
+# bootc-image-builder runs an SELinux labeling stage during disk image creation.
+# Debian usually ships policy under /etc/selinux/default, while osbuild expects
+# /etc/selinux/targeted/contexts/files/file_contexts.
+apt-get install -y \
+  selinux-basics \
+  selinux-policy-default
+
+if [ -f /etc/selinux/default/contexts/files/file_contexts ] && \
+  [ ! -f /etc/selinux/targeted/contexts/files/file_contexts ]; then
+  mkdir -p /etc/selinux/targeted/contexts/files
+  ln -sf \
+    /etc/selinux/default/contexts/files/file_contexts \
+    /etc/selinux/targeted/contexts/files/file_contexts
+fi
+
 # Bootstrap MX signing keys from the official mx-gpg-keys package.
 mx_keys_rel_path="$({
   curl -fsSL "${MX_REPO_BASE}/dists/${MX_SUITE}/main/binary-amd64/Packages.gz" \

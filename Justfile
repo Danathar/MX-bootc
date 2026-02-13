@@ -1,6 +1,7 @@
 export image_name := env("IMAGE_NAME", "mx25-kde-bootc")
 export default_tag := env("DEFAULT_TAG", "latest")
 export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest")
+export output_dir := env("OUTPUT_DIR", "output")
 
 alias build-vm := build-qcow2
 alias rebuild-vm := rebuild-qcow2
@@ -42,7 +43,7 @@ clean:
     rm -f previous.manifest.json
     rm -f changelog.md
     rm -f output.env
-    rm -f output/
+    rm -rf "{{ output_dir }}"
 
 # Sudo Clean Repo
 [group('Utility')]
@@ -140,7 +141,7 @@ _rootful_load_image $target_image=image_name $tag=default_tag:
         ID=$(just sudoif podman images --filter reference="${target_image}:${tag}" --format "'{{ '{{.ID}}' }}'")
         if [[ "$ID" != "$USER_IMG_ID" ]]; then
             # If the image ID is not found or different from user, copy the image from user podman to root podman
-            COPYTMP=$(mktemp -p "${PWD}" -d -t _build_podman_scp.XXXXXXXXXX)
+            COPYTMP=$(mktemp -d -t _build_podman_scp.XXXXXXXXXX)
             just sudoif TMPDIR=${COPYTMP} podman image scp ${UID}@localhost::"${target_image}:${tag}" root@localhost::"${target_image}:${tag}"
             rm -rf "${COPYTMP}"
         fi
@@ -166,7 +167,7 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
     args+="--use-librepo=True "
     args+="--rootfs=btrfs"
 
-    BUILDTMP=$(mktemp -p "${PWD}" -d -t _build-bib.XXXXXXXXXX)
+    BUILDTMP=$(mktemp -d -t _build-bib.XXXXXXXXXX)
 
     sudo podman run \
       --rm \
@@ -182,10 +183,10 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
       ${args} \
       "${target_image}:${tag}"
 
-    mkdir -p output
-    sudo mv -f $BUILDTMP/* output/
+    mkdir -p "{{ output_dir }}"
+    sudo mv -f $BUILDTMP/* "{{ output_dir }}/"
     sudo rmdir $BUILDTMP
-    sudo chown -R $USER:$USER output/
+    sudo chown -R $USER:$USER "{{ output_dir }}/"
 
 # Podman builds the image from the Containerfile and creates a bootable image
 # Parameters:
@@ -227,9 +228,9 @@ _run-vm $target_image $tag $type $config:
     set -eoux pipefail
 
     # Determine the image file based on the type
-    image_file="output/${type}/disk.${type}"
+    image_file="{{ output_dir }}/${type}/disk.${type}"
     if [[ $type == iso ]]; then
-        image_file="output/bootiso/install.iso"
+        image_file="{{ output_dir }}/bootiso/install.iso"
     fi
 
     # Build the image if it does not exist
@@ -256,7 +257,8 @@ _run-vm $target_image $tag $type $config:
     run_args+=(--env "TPM=Y")
     run_args+=(--env "GPU=Y")
     run_args+=(--device=/dev/kvm)
-    run_args+=(--volume "${PWD}/${image_file}":"/boot.${type}")
+    image_file_abs="$(readlink -f "${image_file}")"
+    run_args+=(--volume "${image_file_abs}":"/boot.${type}")
     run_args+=(docker.io/qemux/qemu)
 
     # Run the VM and open the browser to connect
@@ -291,7 +293,7 @@ spawn-vm rebuild="0" type="qcow2" ram="6G":
       --ram=$(echo {{ ram }}| /usr/bin/numfmt --from=iec) \
       --network-user-mode \
       --vsock=false --pass-ssh-key=false \
-      -i ./output/**/*.{{ type }}
+      -i {{ output_dir }}/**/*.{{ type }}
 
 # Runs shell check on all Bash scripts
 lint:
