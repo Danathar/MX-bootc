@@ -10,8 +10,12 @@ if [ -z "${KERNEL_VERSION}" ]; then
   exit 1
 fi
 
-dracut --force --no-hostonly --reproducible --zstd --verbose --add etc-overlay \
-  --kver "${KERNEL_VERSION}" "/usr/lib/modules/${KERNEL_VERSION}/initramfs.img"
+dracut_args=(--force --no-hostonly --reproducible --zstd --verbose)
+if [ -d /usr/lib/dracut/modules.d/95etc-overlay ] || [ -d /usr/lib/dracut/modules.d/90etc-overlay ]; then
+  dracut_args+=(--add etc-overlay)
+fi
+
+dracut "${dracut_args[@]}" --kver "${KERNEL_VERSION}" "/usr/lib/modules/${KERNEL_VERSION}/initramfs.img"
 
 if [ -f "/boot/vmlinuz-${KERNEL_VERSION}" ]; then
   cp -f "/boot/vmlinuz-${KERNEL_VERSION}" "/usr/lib/modules/${KERNEL_VERSION}/vmlinuz"
