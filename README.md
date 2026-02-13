@@ -39,6 +39,20 @@ Here I will defer to the much superior GitHub documentation on the matter. You c
 
 Once you have the repository on your local drive, proceed to the next step.
 
+### Step 1c: Optional Upstream Template Sync
+
+This template includes an optional workflow at [`.github/workflows/template-sync.yml`](./.github/workflows/template-sync.yml) that can open pull requests with upstream template updates.
+
+By default, it only runs manually from the `Actions` tab.
+
+To enable automatic update PRs:
+1. Open [`.github/workflows/template-sync.yml`](./.github/workflows/template-sync.yml).
+2. Uncomment the `schedule` section.
+3. Commit and push the change.
+
+The default [`.templatesyncignore`](./.templatesyncignore) keeps common repo-specific files from being overwritten by sync PRs.
+Review and adjust it for your repo as needed.
+
 ## Step 2: Initial Setup
 
 ### Step 2a: Creating a Cosign Key
