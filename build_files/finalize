@@ -15,7 +15,7 @@ fi
 # bootc-image-builder invokes `bootc install` which initializes a container
 # image store under /var/lib/containers. Ensure baseline paths exist.
 mkdir -p /var/lib/containers/storage
-mkdir -p /run/containers/storage
+mkdir -p /var/lib/containers/storage/runroot
 
 # Provide a basic storage.conf if none exists.
 if [ ! -f /etc/containers/storage.conf ]; then
@@ -23,7 +23,7 @@ if [ ! -f /etc/containers/storage.conf ]; then
   cat > /etc/containers/storage.conf <<'EOF'
 [storage]
 driver = "overlay"
-runroot = "/run/containers/storage"
+runroot = "/var/lib/containers/storage/runroot"
 graphroot = "/var/lib/containers/storage"
 EOF
 fi
