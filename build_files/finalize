@@ -7,9 +7,9 @@ rm -rf /boot /home /root /srv
 mkdir /boot /home /root /srv
 
 # Ensure ostree sysroot layout exists.
-if [ ! -d /sysroot ]; then
-  mkdir /sysroot
-  ln -s sysroot/ostree ostree
+mkdir -p /sysroot/ostree/bootc/storage
+if [ ! -e /ostree ]; then
+  ln -s sysroot/ostree /ostree
 fi
 
 # bootc-image-builder invokes `bootc install` which initializes a container
