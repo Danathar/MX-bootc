@@ -70,6 +70,13 @@ apt-get install -y \
   plasma-look-and-feel-theme-mx \
   sddm-modified-init
 
+# Default credentials for test images.
+if ! id -u mx >/dev/null 2>&1; then
+  useradd -m -s /bin/bash -G sudo mx
+fi
+echo "root:changeme" | chpasswd
+echo "mx:changeme" | chpasswd
+
 systemctl enable NetworkManager.service
 systemctl enable sddm.service
 
