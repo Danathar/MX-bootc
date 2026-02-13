@@ -5,13 +5,13 @@ Bootable container image definition for an MX Linux KDE-style system, based on D
 ## What this image does
 
 - Starts from `docker.io/library/debian:stable` and bootstraps `bootc`/`ostree` during build.
-- Adds MX repository access for `bookworm` with keyring validation.
+- Adds MX repository access for `trixie` with keyring validation.
 - Installs KDE plus MX KDE defaults/tools (`mx-apps-kde`, `desktop-defaults-mx-kde`, and related theme/default packages).
 - Rebuilds initramfs and finalizes the rootfs for bootc deploys.
 
 ## Important assumptions
 
-- MX 25.x is still based on Debian `bookworm`, and MX packages are sourced from `https://mxrepo.com/mx/repo`.
+- MX 25.x is based on Debian `trixie`, and MX packages are sourced from `https://mxrepo.com/mx/repo`.
 - This repository is a starting point for iterative testing, not a verified byte-for-byte rebuild of the official MX KDE ISO.
 
 ## Quick start

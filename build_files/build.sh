@@ -2,7 +2,7 @@
 
 set -ouex pipefail
 
-MX_SUITE="bookworm"
+MX_SUITE="trixie"
 MX_REPO_BASE="https://mxrepo.com/mx/repo"
 MX_KEYRING="/usr/share/keyrings/mx-archive-keyring.gpg"
 MX_REPO_SIGNING_FPR="8AFEB908376620CCDBFBBB730D0D91C3655D0AF4"
@@ -66,7 +66,7 @@ fi
 rm -rf "${GNUPGHOME}"
 
 cat > /etc/apt/sources.list.d/mx.list <<EOF_MX
-# MX Linux repository for bookworm-based MX 23/25 package streams
+# MX Linux repository for trixie-based MX 25 package stream
 deb [signed-by=${MX_KEYRING}] ${MX_REPO_BASE}/ ${MX_SUITE} main non-free ahs
 EOF_MX
 

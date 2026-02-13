@@ -3,7 +3,7 @@ FROM scratch AS ctx
 COPY build_files /
 
 # Bootc base files for Debian
-FROM docker.io/library/debian:stable
+FROM docker.io/library/debian:trixie
 
 COPY system_files /
 
