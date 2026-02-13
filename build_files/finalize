@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -ouex pipefail
+
+# Prepare mutable mountpoints expected by bootc.
+rm -rf /boot /home /root /srv
+mkdir /boot /home /root /srv
+
+# Ensure ostree sysroot layout exists.
+if [ ! -d /sysroot ]; then
+  mkdir /sysroot
+  ln -s sysroot/ostree ostree
+fi
+
+# Force first-boot identity and ssh host key generation.
+rm -f /etc/machine-id
+rm -f /etc/ssh/ssh_host_*

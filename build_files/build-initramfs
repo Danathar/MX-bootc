@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -ouex pipefail
+
+# Build initramfs for the newest kernel in /usr/lib/modules.
+KERNEL_VERSION="$(basename "$(find /usr/lib/modules -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)")"
+
+dracut --force --no-hostonly --reproducible --zstd --verbose --add etc-overlay \
+  --kver "${KERNEL_VERSION}" "/usr/lib/modules/${KERNEL_VERSION}/initramfs.img"
+
+if [ -f "/boot/vmlinuz-${KERNEL_VERSION}" ]; then
+  cp -f "/boot/vmlinuz-${KERNEL_VERSION}" "/usr/lib/modules/${KERNEL_VERSION}/vmlinuz"
+fi
+
+rm -f /*.old || true

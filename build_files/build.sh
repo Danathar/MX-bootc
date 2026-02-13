@@ -2,23 +2,69 @@
 
 set -ouex pipefail
 
-### Install packages
+MX_SUITE="bookworm"
+MX_REPO_BASE="https://mxrepo.com/mx/repo"
+MX_KEYRING="/usr/share/keyrings/mx-archive-keyring.gpg"
 
-# Packages can be installed from any enabled yum repo on the image.
-# RPMfusion repos are available by default in ublue main images
-# List of rpmfusion packages can be found here:
-# https://mirrors.rpmfusion.org/mirrorlist?path=free/fedora/updates/43/x86_64/repoview/index.html&protocol=https&redirect=1
+# Make sure Debian sources include components commonly used by MX packages.
+find /etc/apt -type f -name "*.sources" -print0 | while IFS= read -r -d '' file; do
+  sed -ri 's/^Components: .*/Components: main contrib non-free non-free-firmware/' "$file"
+done
+find /etc/apt -type f -name "*.list" -print0 | while IFS= read -r -d '' file; do
+  sed -ri 's#^(deb(-src)?\s+\S+\s+\S+\s+).*$#\1main contrib non-free non-free-firmware#' "$file"
+done
 
-# this installs a package from fedora repos
-dnf5 install -y tmux 
+apt-get update -y
+apt-get install -y --no-install-recommends ca-certificates curl gnupg gzip
 
-# Use a COPR Example:
-#
-# dnf5 -y copr enable ublue-os/staging
-# dnf5 -y install package
-# Disable COPRs so they don't end up enabled on the final image:
-# dnf5 -y copr disable ublue-os/staging
+# Bootstrap MX signing keys from the official mx-gpg-keys package.
+mx_keys_rel_path="$({
+  curl -fsSL "${MX_REPO_BASE}/dists/${MX_SUITE}/main/binary-amd64/Packages.gz" \
+    | gzip -dc \
+    | awk 'BEGIN{RS="";FS="\n"} $1=="Package: mx-gpg-keys" {for(i=1;i<=NF;i++) if($i ~ /^Filename: /){print substr($i,11); exit}}'
+})"
 
-#### Example for enabling a System Unit File
+if [ -z "${mx_keys_rel_path}" ]; then
+  echo "Failed to discover mx-gpg-keys package path" >&2
+  exit 1
+fi
 
-systemctl enable podman.socket
+curl -fsSL "${MX_REPO_BASE}/${mx_keys_rel_path}" -o /tmp/mx-gpg-keys.deb
+dpkg -i /tmp/mx-gpg-keys.deb
+rm -f /tmp/mx-gpg-keys.deb
+
+mx_keybox="/usr/share/mx-gpg-keys/mx-gpg-keyring"
+GNUPGHOME="$(mktemp -d)"
+chmod 700 "${GNUPGHOME}"
+gpg --batch --homedir "${GNUPGHOME}" --no-default-keyring --keyring "${mx_keybox}" --export > "${MX_KEYRING}"
+rm -rf "${GNUPGHOME}"
+
+cat > /etc/apt/sources.list.d/mx.list <<EOF_MX
+# MX Linux repository for bookworm-based MX 23/25 package streams
+deb [signed-by=${MX_KEYRING}] ${MX_REPO_BASE}/ ${MX_SUITE} main non-free ahs
+EOF_MX
+
+apt-get update -y
+
+# KDE stack plus MX KDE defaults/tools.
+apt-get install -y \
+  kde-standard \
+  kde-plasma-desktop \
+  sddm \
+  mx-apps-kde \
+  desktop-defaults-mx-kde \
+  plasma-modified-defaults-mx \
+  plasma-look-and-feel-theme-mx \
+  sddm-modified-init
+
+systemctl enable NetworkManager.service
+systemctl enable sddm.service
+
+mkdir -p /usr/share/mx-bootc-kde
+apt list --installed > /usr/share/mx-bootc-kde/desktop-packages.txt
+
+if grep -q '^BUILD_ID=' /usr/lib/os-release; then
+  sed -i "s/^BUILD_ID=.*/BUILD_ID=\"${BUILD_ID}\"/" /usr/lib/os-release
+else
+  echo "BUILD_ID=\"${BUILD_ID}\"" >> /usr/lib/os-release
+fi
