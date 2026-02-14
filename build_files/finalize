@@ -31,3 +31,11 @@ fi
 # Force first-boot identity and ssh host key generation.
 rm -f /etc/machine-id
 rm -f /etc/ssh/ssh_host_*
+
+# Avoid shipping both /etc and /usr/etc in the final tree.
+# bootc deployment aborts if both are present in the committed image.
+if [ -d /usr/etc ]; then
+  mkdir -p /etc
+  cp -a /usr/etc/. /etc/
+  rm -rf /usr/etc
+fi

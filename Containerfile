@@ -25,3 +25,17 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
 
 # Verify final image and contents are correct.
 RUN bootc container lint
+
+# Canonicalize defaults into /usr/etc and whiteout /etc in the committed layer.
+# /etc/hostname and /etc/resolv.conf are runtime bind-mounts during build and
+# cannot be removed directly, so use a whiteout to delete /etc in the image.
+RUN if [ -d /etc ]; then \
+      rm -rf /usr/etc && \
+      mkdir -p /usr/etc && \
+      rsync -a \
+        --exclude hostname \
+        --exclude hosts \
+        --exclude resolv.conf \
+        /etc/ /usr/etc/ && \
+      : > /.wh.etc; \
+    fi

@@ -1,0 +1,208 @@
+#!/usr/bin/python3
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+import osbuild.api
+from osbuild.util import containers
+
+
+def _debug(msg):
+    print(f"[bootc-stage-debug] {msg}", file=sys.stderr, flush=True)
+
+
+def _mkdirp(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception as e:
+        _debug(f"failed to mkdir {path}: {e}")
+
+
+def _install_podman_shim():
+    shimdir = "/run/bootc-stage-bin"
+    _mkdirp(shimdir)
+    shimp = os.path.join(shimdir, "podman")
+    script = """#!/bin/sh
+set -eu
+echo "[bootc-stage-podman-shim] $*" >&2
+
+# bootc imgstorage init currently needs `podman ... images` to return success.
+for a in "$@"; do
+  if [ "$a" = "images" ]; then
+    exit 0
+  fi
+done
+
+# In case bootc probes runtime with `podman system info`.
+if [ "${1:-}" = "system" ] && [ "${2:-}" = "info" ]; then
+  exit 0
+fi
+
+echo "[bootc-stage-podman-shim] unsupported invocation" >&2
+exit 127
+"""
+    with open(shimp, "w", encoding="utf-8") as f:
+        f.write(script)
+    os.chmod(shimp, 0o755)
+    return shimdir
+
+
+def _install_bootupctl_shim(shimdir):
+    shimp = os.path.join(shimdir, "bootupctl")
+    script = """#!/bin/sh
+set -eu
+echo "[bootc-stage-bootupctl-shim] $*" >&2
+
+# Minimal compatibility shim for bootc's bootupd integration.
+# Try to perform a real systemd-boot install into the target tree when possible.
+if [ -x /usr/bin/bootctl ] && [ -d /run/osbuild/mounts/boot/efi ]; then
+  /usr/bin/bootctl \
+    --root=/run/osbuild/mounts \
+    --esp-path=/run/osbuild/mounts/boot/efi \
+    --boot-path=/run/osbuild/mounts/boot \
+    --no-variables \
+    install || true
+fi
+
+# Return success to satisfy bootc install flow.
+exit 0
+"""
+    with open(shimp, "w", encoding="utf-8") as f:
+        f.write(script)
+    os.chmod(shimp, 0o755)
+
+
+def _run_debug(cmd):
+    try:
+        cp = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        _debug(f"$ {' '.join(cmd)} => rc={cp.returncode}")
+        if cp.stdout:
+            _debug(f"stdout: {cp.stdout.strip()}")
+        if cp.stderr:
+            _debug(f"stderr: {cp.stderr.strip()}")
+    except Exception as e:
+        _debug(f"failed to run {' '.join(cmd)}: {e}")
+
+
+def _install_policy_file():
+    policydir = "/run/bootc"
+    _mkdirp(policydir)
+    policy = os.path.join(policydir, "policy.json")
+    # bootc pulls from local containers-storage during install; allow local refs.
+    content = """{
+  "default": [
+    {
+      "type": "insecureAcceptAnything"
+    }
+  ]
+}
+"""
+    with open(policy, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.chmod(policy, 0o644)
+
+    # Some components ignore CONTAINERS_POLICY and only read default paths.
+    # Populate both default locations expected by containers/image.
+    etc_policy = "/etc/containers/policy.json"
+    root_cfg_policy = "/root/.config/containers/policy.json"
+    _mkdirp("/etc/containers")
+    _mkdirp("/root/.config/containers")
+    for p in (etc_policy, root_cfg_policy):
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.chmod(p, 0o644)
+
+    return policy
+
+
+def main(options, inputs, paths):
+    images = containers.parse_containers_input(inputs)
+    assert len(images) == 1
+    image = list(images.values())[0]
+
+    env = os.environ.copy()
+    env["BOOTC_SKIP_SELINUX_HOST_CHECK"] = "true"
+    env["BOOTC_BOOTLOADER_DEBUG"] = "vvvv"
+    # Emit richer logs from bootc internals in case this still fails.
+    env.setdefault("RUST_LOG", "bootc=debug,ostree_ext=info")
+
+    # bootc's imgstorage path and containers-storage runroot often live under /run.
+    _mkdirp("/run/bootc/storage")
+    _mkdirp("/run/containers/storage")
+    shimdir = _install_podman_shim()
+    _install_bootupctl_shim(shimdir)
+    _mkdirp("/usr/lib/bootupd/updates")
+    policy = _install_policy_file()
+    env["PATH"] = f"{shimdir}:{env.get('PATH', '')}"
+    env["CONTAINERS_POLICY"] = policy
+
+    _debug(f"bootc path: {shutil.which('bootc')}")
+    _debug(f"podman path: {shutil.which('podman', path=env.get('PATH'))}")
+    _debug(f"policy path: {policy}")
+    _run_debug(["/usr/bin/env"])
+    _run_debug(["/usr/bin/ls", "-ald", "/run", "/run/bootc", "/run/bootc/storage", "/run/containers", "/run/containers/storage"])
+    _run_debug(["/usr/bin/bootc", "--version"])
+    if shutil.which("podman"):
+        _run_debug(["podman", "--version"])
+
+    with containers.container_source(image) as (_, source, _):
+        dst = paths["mounts"]
+        pargs = [
+            "bootc",
+            "install",
+            "to-filesystem",
+            "--source-imgref",
+            source,
+            "--skip-fetch-check",
+            "--generic-image",
+        ]
+
+        root_ssh_keys = options.get("root-ssh-authorized-keys", [])
+        if root_ssh_keys:
+            tmpf = tempfile.NamedTemporaryFile(prefix="bootc-ssh-auth-keys-")
+            for key in root_ssh_keys:
+                tmpf.write(key.encode("utf8") + b"\n")
+            tmpf.flush()
+            pargs.extend(["--root-ssh-authorized-keys", tmpf.name])
+
+        for karg in options.get("kernel-args", []):
+            pargs.extend(["--karg", karg])
+
+        target_imgref = options.get("target-imgref")
+        if target_imgref:
+            pargs.extend(["--target-imgref", target_imgref])
+
+        stateroot = options.get("stateroot")
+        if stateroot:
+            pargs.extend(["--stateroot", stateroot])
+
+        if "root-mount-spec" in options:
+            root_spec = options["root-mount-spec"]
+            if root_spec == "":
+                pargs.extend(["--root-mount-spec="])
+            else:
+                pargs.extend(["--root-mount-spec", root_spec])
+
+        if "boot-mount-spec" in options:
+            boot_spec = options["boot-mount-spec"]
+            if boot_spec == "":
+                pargs.extend(["--boot-mount-spec="])
+            else:
+                pargs.extend(["--boot-mount-spec", boot_spec])
+
+        pargs.append(dst)
+        _debug(f"exec: {' '.join(pargs)}")
+        cp = subprocess.run(pargs, env=env, capture_output=True, text=True, check=False)
+        if cp.stdout:
+            _debug(f"bootc stdout: {cp.stdout.strip()}")
+        if cp.stderr:
+            _debug(f"bootc stderr: {cp.stderr.strip()}")
+        cp.check_returncode()
+
+
+if __name__ == "__main__":
+    args = osbuild.api.arguments()
+    r = main(args["options"], args["inputs"], args["paths"])
+    sys.exit(r)

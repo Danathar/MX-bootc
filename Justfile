@@ -194,6 +194,9 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
       --net=host \
       --security-opt label=type:unconfined_t \
       -v $(pwd)/${config}:/config.toml:ro \
+      -v $(pwd)/disk_config/org.osbuild.selinux:/usr/lib/osbuild/stages/org.osbuild.selinux:ro \
+      -v $(pwd)/disk_config/org.osbuild.bootc.install-to-filesystem:/usr/lib/osbuild/stages/org.osbuild.bootc.install-to-filesystem:ro \
+      -v $(pwd)/disk_config/org.osbuild.bootc.install-to-filesystem.meta.json:/usr/lib/osbuild/stages/org.osbuild.bootc.install-to-filesystem.meta.json:ro \
       -v $BUILDTMP:/output \
       -v $IMGSTORAGETMP:/sysroot/ostree/bootc/storage:z \
       -v /var/lib/containers/storage:/var/lib/containers/storage \
