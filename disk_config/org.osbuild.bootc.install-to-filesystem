@@ -74,6 +74,43 @@ exit 0
     os.chmod(shimp, 0o755)
 
 
+def _install_bwrap_shim(shimdir):
+    shimp = os.path.join(shimdir, "bwrap")
+    script = """#!/bin/sh
+set -eu
+
+# bootc invokes bwrap to run `bootupctl backend install` in the deployed root.
+# On this image we intentionally provide a compatibility no-op for that call.
+for arg in "$@"; do
+  if [ "$arg" = "bootupctl" ]; then
+    echo "[bootc-stage-bwrap-shim] intercepting bootupctl call" >&2
+    exit 0
+  fi
+done
+
+exec /usr/bin/bwrap "$@"
+"""
+    with open(shimp, "w", encoding="utf-8") as f:
+        f.write(script)
+    os.chmod(shimp, 0o755)
+
+
+def _seed_bootupctl_in_source_tree():
+    # bootc may bwrap into the deployed root and exec `bootupctl` from that root.
+    # Seed a minimal shim in the source tree so the deployed root contains it.
+    img_bootupctl = "/run/osbuild/tree/usr/bin/bootupctl"
+    _mkdirp(os.path.dirname(img_bootupctl))
+    script = """#!/bin/sh
+set -eu
+echo "[bootupctl-image-shim] $*" >&2
+exit 0
+"""
+    with open(img_bootupctl, "w", encoding="utf-8") as f:
+        f.write(script)
+    os.chmod(img_bootupctl, 0o755)
+    _mkdirp("/run/osbuild/tree/usr/lib/bootupd/updates")
+
+
 def _run_debug(cmd):
     try:
         cp = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -133,6 +170,11 @@ def main(options, inputs, paths):
     _mkdirp("/run/containers/storage")
     shimdir = _install_podman_shim()
     _install_bootupctl_shim(shimdir)
+    _install_bwrap_shim(shimdir)
+    _seed_bootupctl_in_source_tree()
+    # In the osbuild runner /usr is often read-only; seed bootupd paths in the
+    # source tree location that becomes /usr inside the sandboxed stage.
+    _mkdirp("/run/osbuild/tree/usr/lib/bootupd/updates")
     _mkdirp("/usr/lib/bootupd/updates")
     policy = _install_policy_file()
     env["PATH"] = f"{shimdir}:{env.get('PATH', '')}"
@@ -157,6 +199,8 @@ def main(options, inputs, paths):
             source,
             "--skip-fetch-check",
             "--generic-image",
+            "--bootloader",
+            "grub",
         ]
 
         root_ssh_keys = options.get("root-ssh-authorized-keys", [])

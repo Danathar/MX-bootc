@@ -12,6 +12,9 @@ if [ ! -e /ostree ]; then
   ln -s sysroot/ostree /ostree
 fi
 
+# bootc's install path expects bootupd state directories to exist.
+mkdir -p /usr/lib/bootupd/updates
+
 # bootc-image-builder invokes `bootc install` which initializes a container
 # image store under /var/lib/containers. Ensure baseline paths exist.
 mkdir -p /var/lib/containers/storage

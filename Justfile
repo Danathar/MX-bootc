@@ -150,14 +150,14 @@ _rootful_load_image $target_image=image_name $tag=default_tag:
     return_code=$?
     set -e
 
-    USER_IMG_ID=$(podman images --filter reference="${target_image}:${tag}" --format "'{{ '{{.ID}}' }}'")
+    USER_IMG_ID=$(podman images --filter reference="${target_image}:${tag}" --format "{{ '{{.ID}}' }}")
 
     if [[ $return_code -eq 0 ]]; then
         # If the image is found, load it into rootful podman
-        ID=$(just sudoif podman images --filter reference="${target_image}:${tag}" --format "'{{ '{{.ID}}' }}'")
+        ID=$(just sudoif podman images --filter reference="${target_image}:${tag}" --format "{{ '{{.ID}}' }}")
         if [[ "$ID" != "$USER_IMG_ID" ]]; then
             # If the image ID is not found or different from user, copy the image from user podman to root podman
-            COPYTMP=$(mktemp -d -t _build_podman_scp.XXXXXXXXXX)
+            COPYTMP=$(mktemp -d -p /var/tmp -t _build_podman_scp.XXXXXXXXXX)
             just sudoif TMPDIR=${COPYTMP} podman image scp ${UID}@localhost::"${target_image}:${tag}" root@localhost::"${target_image}:${tag}"
             rm -rf "${COPYTMP}"
         fi
@@ -183,8 +183,8 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
     args+="--use-librepo=True "
     args+="--rootfs=btrfs"
 
-    BUILDTMP=$(mktemp -d -t _build-bib.XXXXXXXXXX)
-    IMGSTORAGETMP=$(mktemp -d -t _build-bib-imgstorage.XXXXXXXXXX)
+    BUILDTMP=$(mktemp -d -p /var/tmp -t _build-bib.XXXXXXXXXX)
+    IMGSTORAGETMP=$(mktemp -d -p /var/tmp -t _build-bib-imgstorage.XXXXXXXXXX)
 
     sudo podman run \
       --rm \
