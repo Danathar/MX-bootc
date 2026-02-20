@@ -140,16 +140,20 @@ def _install_policy_file():
         f.write(content)
     os.chmod(policy, 0o644)
 
-    # Some components ignore CONTAINERS_POLICY and only read default paths.
-    # Populate both default locations expected by containers/image.
-    etc_policy = "/etc/containers/policy.json"
-    root_cfg_policy = "/root/.config/containers/policy.json"
-    _mkdirp("/etc/containers")
-    _mkdirp("/root/.config/containers")
-    for p in (etc_policy, root_cfg_policy):
-        with open(p, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.chmod(p, 0o644)
+    # Some components may probe default policy paths. In osbuild these host
+    # paths can be read-only, so only attempt best-effort writes.
+    maybe_policies = (
+        "/etc/containers/policy.json",
+        "/root/.config/containers/policy.json",
+    )
+    for p in maybe_policies:
+        try:
+            _mkdirp(os.path.dirname(p))
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.chmod(p, 0o644)
+        except OSError as e:
+            _debug(f"skipping policy write to {p}: {e}")
 
     return policy
 
@@ -172,10 +176,9 @@ def main(options, inputs, paths):
     _install_bootupctl_shim(shimdir)
     _install_bwrap_shim(shimdir)
     _seed_bootupctl_in_source_tree()
-    # In the osbuild runner /usr is often read-only; seed bootupd paths in the
-    # source tree location that becomes /usr inside the sandboxed stage.
+    # In the osbuild runner /usr is often read-only; seed bootupd paths only in
+    # the source tree location that becomes /usr inside the deployed root.
     _mkdirp("/run/osbuild/tree/usr/lib/bootupd/updates")
-    _mkdirp("/usr/lib/bootupd/updates")
     policy = _install_policy_file()
     env["PATH"] = f"{shimdir}:{env.get('PATH', '')}"
     env["CONTAINERS_POLICY"] = policy
