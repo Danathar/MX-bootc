@@ -1,0 +1,19 @@
+[Unit]
+Description=OSTree Prepare Root
+Documentation=man:ostree-prepare-root(1)
+DefaultDependencies=no
+ConditionKernelCommandLine=ostree
+ConditionPathExists=/etc/initrd-release
+After=sysroot.mount
+Requires=sysroot.mount
+Before=initrd-root-fs.target
+OnFailure=emergency.target
+OnFailureJobMode=isolate
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/ostree/ostree-prepare-root /sysroot
+StandardInput=null
+StandardOutput=journal+console
+StandardError=journal+console

@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+echo "[bootupctl-image-shim] $*" >&2
+
+# Compatibility shim for bootc installs in this experimental image.
+# For GRUB mode, perform a minimal EFI install and config generation.
+if [ "${1:-}" = "backend" ] && [ "${2:-}" = "install" ]; then
+  if command -v grub-install >/dev/null 2>&1 && [ -d /boot/efi ]; then
+    grub-install \
+      --target=x86_64-efi \
+      --efi-directory=/boot/efi \
+      --bootloader-id=debian \
+      --no-nvram \
+      --recheck || true
+
+    # Keep a removable-media fallback path for UEFI firmware that ignores NVRAM.
+    if [ -f /boot/efi/EFI/debian/grubx64.efi ]; then
+      mkdir -p /boot/efi/EFI/BOOT || true
+      cp -f /boot/efi/EFI/debian/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI || true
+    fi
+  fi
+
+  if command -v grub-mkconfig >/dev/null 2>&1; then
+    if [ -d /boot/grub ]; then
+      grub-mkconfig -o /boot/grub/grub.cfg || true
+    elif [ -d /boot/grub2 ]; then
+      grub-mkconfig -o /boot/grub2/grub.cfg || true
+    fi
+  fi
+  exit 0
+fi
+
+exit 0
