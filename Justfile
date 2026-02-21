@@ -2,6 +2,7 @@ export image_name := env("IMAGE_NAME", "mx25-kde-bootc")
 export default_tag := env("DEFAULT_TAG", "latest")
 export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest")
 export output_dir := env("OUTPUT_DIR", "output")
+export use_custom_bootc_stage := env("USE_CUSTOM_BOOTC_STAGE", "1")
 
 alias build-vm := build-qcow2
 alias rebuild-vm := rebuild-qcow2
@@ -182,6 +183,11 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
     args="--type ${type} "
     args+="--use-librepo=True "
     args+="--rootfs=btrfs"
+    stage_mounts=()
+    if [[ "{{ use_custom_bootc_stage }}" == "1" ]]; then
+        stage_mounts+=(-v "$(pwd)/disk_config/org.osbuild.bootc.install-to-filesystem:/usr/lib/osbuild/stages/org.osbuild.bootc.install-to-filesystem:ro")
+        stage_mounts+=(-v "$(pwd)/disk_config/org.osbuild.bootc.install-to-filesystem.meta.json:/usr/lib/osbuild/stages/org.osbuild.bootc.install-to-filesystem.meta.json:ro")
+    fi
 
     BUILDTMP=$(mktemp -d -p /var/tmp -t _build-bib.XXXXXXXXXX)
     IMGSTORAGETMP=$(mktemp -d -p /var/tmp -t _build-bib-imgstorage.XXXXXXXXXX)
@@ -195,8 +201,7 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
       --security-opt label=type:unconfined_t \
       -v $(pwd)/${config}:/config.toml:ro \
       -v $(pwd)/disk_config/org.osbuild.selinux:/usr/lib/osbuild/stages/org.osbuild.selinux:ro \
-      -v $(pwd)/disk_config/org.osbuild.bootc.install-to-filesystem:/usr/lib/osbuild/stages/org.osbuild.bootc.install-to-filesystem:ro \
-      -v $(pwd)/disk_config/org.osbuild.bootc.install-to-filesystem.meta.json:/usr/lib/osbuild/stages/org.osbuild.bootc.install-to-filesystem.meta.json:ro \
+      "${stage_mounts[@]}" \
       -v $BUILDTMP:/output \
       -v $IMGSTORAGETMP:/sysroot/ostree/bootc/storage:z \
       -v /var/lib/containers/storage:/var/lib/containers/storage \
@@ -205,8 +210,9 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
       "${target_image}:${tag}"
 
     mkdir -p "{{ output_dir }}"
-    sudo mv -f $BUILDTMP/* "{{ output_dir }}/"
-    sudo rmdir $BUILDTMP
+    # Cross-device moves can fail when /var/tmp and workspace are on different filesystems.
+    sudo rsync -a --delete "$BUILDTMP"/ "{{ output_dir }}/"
+    sudo rm -rf "$BUILDTMP"
     sudo rm -rf $IMGSTORAGETMP
     sudo chown -R $USER:$USER "{{ output_dir }}/"
 

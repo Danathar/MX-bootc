@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import glob
 import os
 import shutil
 import subprocess
@@ -9,15 +10,148 @@ import osbuild.api
 from osbuild.util import containers
 
 
-def _debug(msg):
-    print(f"[bootc-stage-debug] {msg}", file=sys.stderr, flush=True)
-
-
 def _mkdirp(path):
+    os.makedirs(path, exist_ok=True)
+
+
+def _read_passwd_records(dst):
+    passwd_files = [os.path.join(dst, "etc", "passwd")]
+    passwd_files.extend(
+        sorted(glob.glob(os.path.join(dst, "ostree", "deploy", "*", "deploy", "*", "etc", "passwd")))
+    )
+
+    records = {}
+    for passwd in passwd_files:
+        if not os.path.isfile(passwd):
+            continue
+        with open(passwd, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split(":")
+                if len(parts) < 7:
+                    continue
+                name = parts[0]
+                try:
+                    uid = int(parts[2])
+                    gid = int(parts[3])
+                except ValueError:
+                    continue
+                home = parts[5]
+                shell = parts[6]
+                records[name] = (uid, gid, home, shell)
+    return records
+
+
+def _ensure_user_homes(dst):
+    deploy_roots = sorted(glob.glob(os.path.join(dst, "ostree", "deploy", "*", "deploy", "*")))
+
+    for (_, (uid, gid, home, shell)) in _read_passwd_records(dst).items():
+        # Regular interactive users only.
+        if uid < 1000:
+            continue
+        if shell in ("/usr/sbin/nologin", "/sbin/nologin", "/bin/false"):
+            continue
+        if not home.startswith("/"):
+            continue
+
+        target_paths = []
+
+        if deploy_roots:
+            for root in deploy_roots:
+                # Deployment-visible home path (e.g. /home/mx).
+                target_paths.append(os.path.join(root, home.lstrip("/")))
+
+                # Persistent stateroot var path backing /var at runtime.
+                if home.startswith("/home/"):
+                    stateroot = os.path.dirname(os.path.dirname(root))
+                    target_paths.append(os.path.join(stateroot, "var", home.lstrip("/")))
+        else:
+            # Non-ostree fallback.
+            target_paths.append(os.path.join(dst, home.lstrip("/")))
+            if home.startswith("/home/"):
+                target_paths.append(os.path.join(dst, "var", home.lstrip("/")))
+
+        # De-duplicate while preserving order.
+        seen = set()
+        for home_path in target_paths:
+            if home_path in seen:
+                continue
+            seen.add(home_path)
+            _mkdirp(home_path)
+            os.chown(home_path, uid, gid)
+            os.chmod(home_path, 0o700)
+
+
+def _mask_service(path_root, unit_name):
+    unit_path = os.path.join(path_root, "etc", "systemd", "system", unit_name)
+    _mkdirp(os.path.dirname(unit_path))
+    if os.path.lexists(unit_path):
+        os.unlink(unit_path)
+    os.symlink("/dev/null", unit_path)
+
+
+def _mask_unwanted_services(dst):
+    roots = sorted(glob.glob(os.path.join(dst, "ostree", "deploy", "*", "deploy", "*")))
+
+    for root in roots:
+        try:
+            _mask_service(root, "nvidia-persistenced.service")
+            _mask_service(root, "systemd-networkd-wait-online.service")
+        except OSError:
+            continue
+
+
+def _replace_file_text(path, replacements):
     try:
-        os.makedirs(path, exist_ok=True)
-    except Exception as e:
-        _debug(f"failed to mkdir {path}: {e}")
+        with open(path, encoding="utf-8", errors="replace") as f:
+            original = f.read()
+    except OSError:
+        return
+
+    updated = original
+    for old, new in replacements:
+        updated = updated.replace(old, new)
+
+    if updated != original:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(updated)
+
+
+def _prepare_plasma_launcher_defaults():
+    root = "/run/osbuild/tree"
+    if not os.path.isdir(root):
+        return
+
+    rel_files = (
+        "usr/share/plasma/plasmoids/org.kde.plasma.kicker/contents/config/main.xml",
+        "usr/share/plasma/plasmoids/org.kde.plasma.kicker/contents/ui/ConfigGeneral.qml",
+        "usr/share/plasma/plasmoids/org.kde.plasma.kickoff/contents/config/main.xml",
+        "usr/share/plasma/plasmoids/org.kde.plasma.kickoff/contents/ui/code/tools.js",
+    )
+
+    replacements = (
+        ("start-here-kde-symbolic", "start-here-kde"),
+        ("/usr/share/icons/mxfcelogo-rounded.png", "start-here-kde"),
+    )
+
+    for rel in rel_files:
+        _replace_file_text(os.path.join(root, rel), replacements)
+
+    # Some MX defaults still point to this legacy absolute icon path.
+    # Ensure it resolves to a valid local file for Plasma's launcher button.
+    legacy_icon = os.path.join(root, "usr/share/icons/mxfcelogo-rounded.png")
+    if not os.path.exists(legacy_icon):
+        for cand in (
+            "usr/share/icons/HighContrast/32x32/places/start-here.png",
+            "usr/share/icons/HighContrast/48x48/places/start-here.png",
+        ):
+            src = os.path.join(root, cand)
+            if os.path.isfile(src):
+                _mkdirp(os.path.dirname(legacy_icon))
+                shutil.copy2(src, legacy_icon)
+                break
 
 
 def _install_podman_shim():
@@ -26,22 +160,12 @@ def _install_podman_shim():
     shimp = os.path.join(shimdir, "podman")
     script = """#!/bin/sh
 set -eu
+
+# bootc probes podman while initializing image storage.
+# In osbuild this probe can fail due environment/runtime differences.
+# A permissive success shim keeps install-to-filesystem moving.
 echo "[bootc-stage-podman-shim] $*" >&2
-
-# bootc imgstorage init currently needs `podman ... images` to return success.
-for a in "$@"; do
-  if [ "$a" = "images" ]; then
-    exit 0
-  fi
-done
-
-# In case bootc probes runtime with `podman system info`.
-if [ "${1:-}" = "system" ] && [ "${2:-}" = "info" ]; then
-  exit 0
-fi
-
-echo "[bootc-stage-podman-shim] unsupported invocation" >&2
-exit 127
+exit 0
 """
     with open(shimp, "w", encoding="utf-8") as f:
         f.write(script)
@@ -49,85 +173,35 @@ exit 127
     return shimdir
 
 
-def _install_bootupctl_shim(shimdir):
-    shimp = os.path.join(shimdir, "bootupctl")
-    script = """#!/bin/sh
+def _install_bootupctl_shims(shimdir):
+    # Host-side shim (used before any chroot/bwrap into the deployed tree)
+    host_shim = os.path.join(shimdir, "bootupctl")
+    host_script = """#!/bin/sh
 set -eu
-echo "[bootc-stage-bootupctl-shim] $*" >&2
-
-# Minimal compatibility shim for bootc's bootupd integration.
-# Try to perform a real systemd-boot install into the target tree when possible.
-if [ -x /usr/bin/bootctl ] && [ -d /run/osbuild/mounts/boot/efi ]; then
-  /usr/bin/bootctl \
-    --root=/run/osbuild/mounts \
-    --esp-path=/run/osbuild/mounts/boot/efi \
-    --boot-path=/run/osbuild/mounts/boot \
-    --no-variables \
-    install || true
-fi
-
-# Return success to satisfy bootc install flow.
+echo "[bootc-stage-bootupctl-shim host] $*" >&2
 exit 0
 """
-    with open(shimp, "w", encoding="utf-8") as f:
-        f.write(script)
-    os.chmod(shimp, 0o755)
+    with open(host_shim, "w", encoding="utf-8") as f:
+        f.write(host_script)
+    os.chmod(host_shim, 0o755)
 
-
-def _install_bwrap_shim(shimdir):
-    shimp = os.path.join(shimdir, "bwrap")
-    script = """#!/bin/sh
+    # Deployed-tree shim (used when bootc bwraps into target root)
+    tree_shim = "/run/osbuild/tree/usr/bin/bootupctl"
+    _mkdirp(os.path.dirname(tree_shim))
+    tree_script = """#!/bin/sh
 set -eu
-
-# bootc invokes bwrap to run `bootupctl backend install` in the deployed root.
-# On this image we intentionally provide a compatibility no-op for that call.
-for arg in "$@"; do
-  if [ "$arg" = "bootupctl" ]; then
-    echo "[bootc-stage-bwrap-shim] intercepting bootupctl call" >&2
-    exit 0
-  fi
-done
-
-exec /usr/bin/bwrap "$@"
-"""
-    with open(shimp, "w", encoding="utf-8") as f:
-        f.write(script)
-    os.chmod(shimp, 0o755)
-
-
-def _seed_bootupctl_in_source_tree():
-    # bootc may bwrap into the deployed root and exec `bootupctl` from that root.
-    # Seed a minimal shim in the source tree so the deployed root contains it.
-    img_bootupctl = "/run/osbuild/tree/usr/bin/bootupctl"
-    _mkdirp(os.path.dirname(img_bootupctl))
-    script = """#!/bin/sh
-set -eu
-echo "[bootupctl-image-shim] $*" >&2
+echo "[bootc-stage-bootupctl-shim tree] $*" >&2
 exit 0
 """
-    with open(img_bootupctl, "w", encoding="utf-8") as f:
-        f.write(script)
-    os.chmod(img_bootupctl, 0o755)
-    _mkdirp("/run/osbuild/tree/usr/lib/bootupd/updates")
-
-
-def _run_debug(cmd):
-    try:
-        cp = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        _debug(f"$ {' '.join(cmd)} => rc={cp.returncode}")
-        if cp.stdout:
-            _debug(f"stdout: {cp.stdout.strip()}")
-        if cp.stderr:
-            _debug(f"stderr: {cp.stderr.strip()}")
-    except Exception as e:
-        _debug(f"failed to run {' '.join(cmd)}: {e}")
+    with open(tree_shim, "w", encoding="utf-8") as f:
+        f.write(tree_script)
+    os.chmod(tree_shim, 0o755)
 
 
 def _install_policy_file():
     policydir = "/run/bootc"
     _mkdirp(policydir)
     policy = os.path.join(policydir, "policy.json")
-    # bootc pulls from local containers-storage during install; allow local refs.
     content = """{
   "default": [
     {
@@ -136,26 +210,135 @@ def _install_policy_file():
   ]
 }
 """
+
     with open(policy, "w", encoding="utf-8") as f:
         f.write(content)
     os.chmod(policy, 0o644)
 
-    # Some components may probe default policy paths. In osbuild these host
-    # paths can be read-only, so only attempt best-effort writes.
-    maybe_policies = (
-        "/etc/containers/policy.json",
-        "/root/.config/containers/policy.json",
-    )
-    for p in maybe_policies:
+    # Some code paths still check default policy locations explicitly.
+    for p in ("/etc/containers/policy.json", "/root/.config/containers/policy.json"):
         try:
             _mkdirp(os.path.dirname(p))
             with open(p, "w", encoding="utf-8") as f:
                 f.write(content)
             os.chmod(p, 0o644)
-        except OSError as e:
-            _debug(f"skipping policy write to {p}: {e}")
+        except OSError:
+            pass
 
     return policy
+
+
+def _post_install_boot_fixes(dst):
+    _ensure_user_homes(dst)
+    _mask_unwanted_services(dst)
+
+    boot = os.path.join(dst, "boot")
+    esp = os.path.join(boot, "efi")
+    loader = os.path.join(boot, "loader")
+    loader1 = os.path.join(boot, "loader.1")
+    entries = os.path.join(loader, "entries")
+    entries1 = os.path.join(loader1, "entries")
+
+    # Some installs leave entries in loader.1 without a loader symlink.
+    if os.path.isdir(loader1) and not os.path.lexists(loader):
+        os.symlink("loader.1", loader)
+
+    if os.path.isdir(entries1) and not os.path.lexists(entries):
+        _mkdirp(os.path.dirname(entries))
+        os.symlink("../loader.1/entries", entries)
+
+    # Ensure systemd-boot can see entries and referenced artifacts on ESP.
+    src_entries = entries if os.path.isdir(entries) else entries1
+    esp_entries = os.path.join(esp, "loader", "entries")
+    copied_entries = []
+    if os.path.isdir(src_entries):
+        _mkdirp(esp_entries)
+        for name in sorted(os.listdir(src_entries)):
+            src_entry = os.path.join(src_entries, name)
+            if not os.path.isfile(src_entry):
+                continue
+
+            dst_entry = os.path.join(esp_entries, name)
+            shutil.copy2(src_entry, dst_entry)
+            copied_entries.append(name)
+
+            # Mirror kernel/initrd paths referenced in BLS entries to ESP.
+            with open(src_entry, encoding="utf-8") as f:
+                for line in f:
+                    parts = line.strip().split(maxsplit=1)
+                    if len(parts) != 2:
+                        continue
+                    key, path = parts
+                    if key not in ("linux", "initrd") or not path.startswith("/"):
+                        continue
+
+                    src_path = os.path.join(dst, path.lstrip("/"))
+                    dst_path = os.path.join(esp, path.lstrip("/"))
+                    if os.path.isfile(src_path):
+                        _mkdirp(os.path.dirname(dst_path))
+                        shutil.copy2(src_path, dst_path)
+
+        # Use the first copied entry as default boot target.
+        if copied_entries:
+            loader_conf = os.path.join(esp, "loader", "loader.conf")
+            _mkdirp(os.path.dirname(loader_conf))
+            with open(loader_conf, "w", encoding="utf-8") as f:
+                f.write(f"default {copied_entries[0]}\n")
+                f.write("timeout 3\n")
+
+    # Best-effort fallback: install systemd-boot directly into target ESP.
+    if shutil.which("bootctl") and os.path.isdir(esp):
+        subprocess.run(
+            [
+                "bootctl",
+                "--esp-path",
+                esp,
+                "--boot-path",
+                boot,
+                "--no-variables",
+                "install",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+
+    # Firmware fallback path for UEFI when NVRAM entries are absent/ignored.
+    efi_boot_dir = os.path.join(esp, "EFI", "BOOT")
+    _mkdirp(efi_boot_dir)
+    fallback = os.path.join(efi_boot_dir, "BOOTX64.EFI")
+    deploy_glob_candidates = []
+    for pat in (
+        os.path.join(
+            dst,
+            "ostree/deploy/*/deploy/*/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed",
+        ),
+        os.path.join(
+            dst,
+            "ostree/deploy/*/deploy/*/usr/lib/systemd/boot/efi/systemd-bootx64.efi",
+        ),
+        os.path.join(dst, "ostree/deploy/*/deploy/*/usr/lib/shim/shimx64.efi.signed"),
+        os.path.join(dst, "ostree/deploy/*/deploy/*/usr/lib/shim/shimx64.efi"),
+    ):
+        deploy_glob_candidates.extend(sorted(glob.glob(pat)))
+
+    fallback_candidates = (
+        os.path.join(esp, "EFI", "debian", "grubx64.efi"),
+        os.path.join(esp, "EFI", "systemd", "systemd-bootx64.efi"),
+        *deploy_glob_candidates,
+        "/run/osbuild/tree/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed",
+        "/run/osbuild/tree/usr/lib/systemd/boot/efi/systemd-bootx64.efi",
+    )
+    for candidate in fallback_candidates:
+        if os.path.isfile(candidate):
+            # Also populate the standard systemd-boot path if missing.
+            if "systemd-bootx64.efi" in os.path.basename(candidate):
+                systemd_dir = os.path.join(esp, "EFI", "systemd")
+                _mkdirp(systemd_dir)
+                shutil.copy2(candidate, os.path.join(systemd_dir, "systemd-bootx64.efi"))
+            shutil.copy2(candidate, fallback)
+            break
 
 
 def main(options, inputs, paths):
@@ -165,32 +348,16 @@ def main(options, inputs, paths):
 
     env = os.environ.copy()
     env["BOOTC_SKIP_SELINUX_HOST_CHECK"] = "true"
-    env["BOOTC_BOOTLOADER_DEBUG"] = "vvvv"
-    # Emit richer logs from bootc internals in case this still fails.
-    env.setdefault("RUST_LOG", "bootc=debug,ostree_ext=info")
 
-    # bootc's imgstorage path and containers-storage runroot often live under /run.
+    # Ensure runtime paths bootc probes for image storage exist.
     _mkdirp("/run/bootc/storage")
     _mkdirp("/run/containers/storage")
     shimdir = _install_podman_shim()
-    _install_bootupctl_shim(shimdir)
-    _install_bwrap_shim(shimdir)
-    _seed_bootupctl_in_source_tree()
-    # In the osbuild runner /usr is often read-only; seed bootupd paths only in
-    # the source tree location that becomes /usr inside the deployed root.
-    _mkdirp("/run/osbuild/tree/usr/lib/bootupd/updates")
+    _install_bootupctl_shims(shimdir)
     policy = _install_policy_file()
+    _prepare_plasma_launcher_defaults()
     env["PATH"] = f"{shimdir}:{env.get('PATH', '')}"
     env["CONTAINERS_POLICY"] = policy
-
-    _debug(f"bootc path: {shutil.which('bootc')}")
-    _debug(f"podman path: {shutil.which('podman', path=env.get('PATH'))}")
-    _debug(f"policy path: {policy}")
-    _run_debug(["/usr/bin/env"])
-    _run_debug(["/usr/bin/ls", "-ald", "/run", "/run/bootc", "/run/bootc/storage", "/run/containers", "/run/containers/storage"])
-    _run_debug(["/usr/bin/bootc", "--version"])
-    if shutil.which("podman"):
-        _run_debug(["podman", "--version"])
 
     with containers.container_source(image) as (_, source, _):
         dst = paths["mounts"]
@@ -225,6 +392,7 @@ def main(options, inputs, paths):
         if stateroot:
             pargs.extend(["--stateroot", stateroot])
 
+        # Passing empty value intentionally omits mountspec kernel args.
         if "root-mount-spec" in options:
             root_spec = options["root-mount-spec"]
             if root_spec == "":
@@ -240,13 +408,8 @@ def main(options, inputs, paths):
                 pargs.extend(["--boot-mount-spec", boot_spec])
 
         pargs.append(dst)
-        _debug(f"exec: {' '.join(pargs)}")
-        cp = subprocess.run(pargs, env=env, capture_output=True, text=True, check=False)
-        if cp.stdout:
-            _debug(f"bootc stdout: {cp.stdout.strip()}")
-        if cp.stderr:
-            _debug(f"bootc stderr: {cp.stderr.strip()}")
-        cp.check_returncode()
+        subprocess.run(pargs, env=env, check=True)
+        _post_install_boot_fixes(dst)
 
 
 if __name__ == "__main__":

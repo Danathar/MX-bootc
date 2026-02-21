@@ -115,11 +115,60 @@ apt-get install -y \
   kde-standard \
   kde-plasma-desktop \
   sddm \
+  adwaita-icon-theme \
+  hicolor-icon-theme \
+  papirus-icon-theme \
+  papirus-mxblue \
+  papirus-folder-colors \
+  mx-icons-start \
+  mx-comfort-themes \
+  mx-greybird-themes \
+  breeze-icon-theme \
+  libgtk-3-bin \
   mx-apps-kde \
   desktop-defaults-mx-kde \
   plasma-modified-defaults-mx \
   plasma-look-and-feel-theme-mx \
   sddm-modified-init
+
+# Keep VM boots clean on non-NVIDIA hardware and with NetworkManager only.
+rm -f /etc/modules-load.d/nvidia.conf
+rm -f /etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service
+rm -f /etc/systemd/system/sysinit.target.wants/hwclock-mx.service
+systemctl disable nvidia-persistenced.service || true
+systemctl mask nvidia-persistenced.service || true
+systemctl disable systemd-networkd.service systemd-networkd-wait-online.service || true
+systemctl mask systemd-networkd-wait-online.service || true
+systemctl disable hwclock-mx.service || true
+
+# Some MX icon/theme combinations do not provide this exact symbolic name.
+# Use the broader symbolic icon name that is consistently present.
+for f in \
+  /usr/share/plasma/plasmoids/org.kde.plasma.kicker/contents/config/main.xml \
+  /usr/share/plasma/plasmoids/org.kde.plasma.kicker/contents/ui/ConfigGeneral.qml \
+  /usr/share/plasma/plasmoids/org.kde.plasma.kickoff/contents/config/main.xml \
+  /usr/share/plasma/plasmoids/org.kde.plasma.kickoff/contents/ui/code/tools.js; do
+  [ -f "${f}" ] && sed -i \
+    -e 's/start-here-kde-symbolic/start-here-kde/g' \
+    -e 's#/usr/share/icons/mxfcelogo-rounded.png#start-here-kde#g' \
+    "${f}"
+done
+
+# Force icon cache update.
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  find /usr/share/icons -maxdepth 1 -type d | while read -r dir; do
+    if [ -f "$dir/index.theme" ]; then
+      gtk-update-icon-cache -f -t "$dir" || true
+    fi
+  done
+fi
+
+# Keep compatibility for MX defaults that still reference this absolute path.
+if [ ! -f /usr/share/icons/mxfcelogo-rounded.png ] && \
+   [ -f /usr/share/icons/HighContrast/32x32/places/start-here.png ]; then
+  cp -f /usr/share/icons/HighContrast/32x32/places/start-here.png \
+    /usr/share/icons/mxfcelogo-rounded.png
+fi
 
 systemctl enable NetworkManager.service
 systemctl enable sddm.service

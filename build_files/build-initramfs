@@ -2,6 +2,10 @@
 
 set -ouex pipefail
 
+# Container builds often run on filesystems that reject xattrs in the initramfs tree.
+# They are optional for this image build; disable to avoid noisy/non-fatal failures.
+export DRACUT_NO_XATTR="${DRACUT_NO_XATTR:-1}"
+
 # Build initramfs for the newest kernel in /usr/lib/modules.
 KERNEL_VERSION="$(basename "$(find /usr/lib/modules -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)")"
 
