@@ -140,6 +140,7 @@ systemctl mask nvidia-persistenced.service || true
 systemctl disable systemd-networkd.service systemd-networkd-wait-online.service || true
 systemctl mask systemd-networkd-wait-online.service || true
 systemctl disable hwclock-mx.service || true
+systemctl mask hwclock-mx.service || true
 
 # Some MX icon/theme combinations do not provide this exact symbolic name.
 # Use the broader symbolic icon name that is consistently present.
