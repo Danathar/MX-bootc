@@ -35,7 +35,6 @@ apt-get install -y \
   fdisk \
   iproute2 \
   iputils-ping \
-  linux-image-amd64 \
   network-manager \
   parted \
   rsync \
@@ -109,6 +108,9 @@ deb [signed-by=${MX_KEYRING}] ${MX_REPO_BASE}/ ${MX_SUITE} main non-free ahs
 EOF_MX
 
 apt-get update -y
+
+# Install the kernel from the MX repository (AHS/Liquorix version)
+apt-get install -y linux-image-liquorix-amd64
 
 # KDE stack plus MX KDE defaults/tools.
 apt-get install -y \
