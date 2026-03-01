@@ -6,7 +6,7 @@ This repository is **HIGHLY experimental** and **NOT** affiliated with or endors
 
 It may brea - in fact it is broke! It is probably broken in multiple ways right now. Use it only for testing.
 
-The goal of this repository is to test whether GPT-5.3-codex can produce a bootc-based MX Linux KDE image that can actually boot.
+This repository is an AI experiment and should be treated as such. The goal of this repository is to test whether GPT-5.3-codex can produce a bootc-based MX Linux KDE image that can actually boot.
 
 ## What this project currently does
 
