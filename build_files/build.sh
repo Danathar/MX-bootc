@@ -145,7 +145,6 @@ apt_install_with_retry \
   mx-greybird-themes \
   breeze-icon-theme \
   libgtk-3-bin \
-  mx-apps-kde \
   desktop-defaults-mx-kde \
   plasma-modified-defaults-mx \
   plasma-look-and-feel-theme-mx \
