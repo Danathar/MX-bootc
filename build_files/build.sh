@@ -19,11 +19,12 @@ apt_install_with_retry() {
       return 0
     fi
     if [ "${i}" -lt "${attempts}" ]; then
-      echo "apt install failed for package(s): $* (attempt ${i} of ${attempts} failed); retrying after refreshing package indexes..." >&2
+      echo "apt install failed for package(s): $* (attempt ${i}/${attempts} failed); retrying after refreshing package indexes..." >&2
       sleep "${retry_delay}"
       apt-get update -y
     fi
   done
+  echo "All ${attempts} attempts failed for package(s): $*" >&2
   return 1
 }
 
