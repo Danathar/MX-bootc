@@ -14,8 +14,7 @@ apt_install_with_retry() {
   local attempts=3
   local retry_delay=5
   local i
-  apt-get update -y
-  for i in $(seq 1 "${attempts}"); do
+  for (( i=1; i<=attempts; i++ )); do
     if apt-get install -y --fix-missing "$@"; then
       return 0
     fi
@@ -124,6 +123,8 @@ cat > /etc/apt/sources.list.d/mx.list <<EOF_MX
 # MX Linux repository for trixie-based MX 25 package stream
 deb [signed-by=${MX_KEYRING}] ${MX_REPO_BASE}/ ${MX_SUITE} main non-free ahs
 EOF_MX
+
+apt-get update -y
 
 # Install the kernel from the MX repository (AHS/Liquorix version)
 apt_install_with_retry linux-image-liquorix-amd64
