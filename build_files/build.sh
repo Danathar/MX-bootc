@@ -10,6 +10,22 @@ MX_REPO_SIGNING_FPRS=(
   "0FC0E9FB5B3806B71651351259C16711EFA6FD38"
 )
 
+apt_install_with_retry() {
+  local attempts=3
+  local i
+  for i in $(seq 1 "${attempts}"); do
+    apt-get update -y
+    if apt-get install -y --fix-missing "$@"; then
+      return 0
+    fi
+    if [ "${i}" -lt "${attempts}" ]; then
+      echo "apt install failed (attempt ${i}/${attempts}); retrying after refreshing package indexes..." >&2
+      sleep 5
+    fi
+  done
+  return 1
+}
+
 # Make sure Debian sources include components commonly used by MX packages.
 # Keep third-party source files untouched.
 find /etc/apt -type f -name "*.sources" -print0 | while IFS= read -r -d '' file; do
@@ -107,13 +123,11 @@ cat > /etc/apt/sources.list.d/mx.list <<EOF_MX
 deb [signed-by=${MX_KEYRING}] ${MX_REPO_BASE}/ ${MX_SUITE} main non-free ahs
 EOF_MX
 
-apt-get update -y
-
 # Install the kernel from the MX repository (AHS/Liquorix version)
-apt-get install -y linux-image-liquorix-amd64
+apt_install_with_retry linux-image-liquorix-amd64
 
 # KDE stack plus MX KDE defaults/tools.
-apt-get install -y \
+apt_install_with_retry \
   kde-standard \
   kde-plasma-desktop \
   sddm \
