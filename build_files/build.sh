@@ -12,6 +12,7 @@ MX_REPO_SIGNING_FPRS=(
 
 apt_install_with_retry() {
   local attempts=3
+  local retry_delay=5
   local i
   for i in $(seq 1 "${attempts}"); do
     apt-get update -y
@@ -20,7 +21,7 @@ apt_install_with_retry() {
     fi
     if [ "${i}" -lt "${attempts}" ]; then
       echo "apt install failed (attempt ${i}/${attempts}); retrying after refreshing package indexes..." >&2
-      sleep 5
+      sleep "${retry_delay}"
     fi
   done
   return 1
