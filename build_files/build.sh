@@ -14,14 +14,15 @@ apt_install_with_retry() {
   local attempts=3
   local retry_delay=5
   local i
+  apt-get update -y
   for i in $(seq 1 "${attempts}"); do
-    apt-get update -y
     if apt-get install -y --fix-missing "$@"; then
       return 0
     fi
     if [ "${i}" -lt "${attempts}" ]; then
-      echo "apt install failed (attempt ${i}/${attempts}); retrying after refreshing package indexes..." >&2
+      echo "apt install failed for package(s): $* (attempt ${i}/${attempts}); retrying after refreshing package indexes..." >&2
       sleep "${retry_delay}"
+      apt-get update -y
     fi
   done
   return 1
