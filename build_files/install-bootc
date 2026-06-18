@@ -75,14 +75,18 @@ apt purge -y $DEV_DEPS
 apt autoremove -y --purge
 
 # Remove temporary source/build artifacts so they are not committed into image layers.
-if [[ -z "${TMPROOT}" || "${TMPROOT}" == "/" ]]; then
-  echo "TMPROOT must be non-empty and not '/'; got: ${TMPROOT}"
+tmproot="${TMPROOT:-}"
+if [[ -z "${tmproot}" || "${tmproot}" == "/" ]]; then
+  echo "TMPROOT must be set to a non-empty value other than '/'; got: ${tmproot}"
   exit 1
 fi
-if [[ -d "${TMPROOT}" ]]; then
-  rm -rf -- "${TMPROOT}"
+if [[ -d "${tmproot}" ]]; then
+  rm -rf -- "${tmproot}"
+elif [[ -e "${tmproot}" ]]; then
+  echo "TMPROOT exists but is not a directory: ${tmproot}"
+  exit 1
 else
-  echo "TMPROOT does not exist, skipping cleanup: ${TMPROOT}"
+  echo "TMPROOT does not exist, skipping cleanup: ${tmproot}"
 fi
 
 # Keep apt metadata out of the final image layer; downstream scripts refresh indexes as needed.
