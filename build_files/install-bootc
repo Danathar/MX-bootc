@@ -73,3 +73,10 @@ apt-mark hold libostree-1-1
 # Remove no longer needed packages
 apt purge -y $DEV_DEPS
 apt autoremove -y --purge
+
+# Remove temporary source/build artifacts so they are not committed into image layers.
+rm -rf "${TMPROOT}"
+
+# Keep apt metadata out of the final image layer; downstream scripts refresh indexes as needed.
+apt-get clean
+rm -rf /var/lib/apt/lists/*
