@@ -75,11 +75,11 @@ apt purge -y $DEV_DEPS
 apt autoremove -y --purge
 
 # Remove temporary source/build artifacts so they are not committed into image layers.
-if [ "${TMPROOT}" = "/" ]; then
-  echo "Refusing to remove TMPROOT=/"
+if [[ -z "${TMPROOT}" || "${TMPROOT}" == "/" || ! -d "${TMPROOT}" ]]; then
+  echo "Refusing to remove unsafe TMPROOT: ${TMPROOT}"
   exit 1
 fi
-rm -rf "${TMPROOT}"
+rm -rf -- "${TMPROOT}"
 
 # Keep apt metadata out of the final image layer; downstream scripts refresh indexes as needed.
 apt-get clean
