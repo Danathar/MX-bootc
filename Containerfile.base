@@ -1,0 +1,10 @@
+# Base image containing the expensive, pinned bootc/ostree bootstrap.
+FROM docker.io/library/debian:trixie@sha256:fac46bff2e02f51425b6e33b0e1169f55dfb053d83511ca28aa50c09fd5ed7a4
+
+COPY build_files/install-bootloader /usr/local/lib/mx-bootc/install-bootloader
+COPY build_files/install-bootc /usr/local/lib/mx-bootc/install-bootc
+
+RUN /usr/local/lib/mx-bootc/install-bootloader && \
+    /usr/local/lib/mx-bootc/install-bootc
+
+LABEL containers.bootc="1"

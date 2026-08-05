@@ -22,6 +22,13 @@ This is not a byte-for-byte recreation of the official MX Linux KDE ISO build pr
 
 ## Build the container image
 
+The expensive bootc/ostree bootstrap is published separately as a pinned base image. For a local build, build that base once and then build the desktop image:
+
+```bash
+just build-base
+just build localhost/mx-bootc latest
+```
+
 Local example:
 
 ```bash
@@ -86,6 +93,7 @@ They are not part of the immutable image build and therefore are not expected to
 ## Important files
 
 - `Containerfile`: image build order.
+- `Containerfile.base`: pinned bootc/ostree build base.
 - `build_files/build.sh`: package and repository setup.
 - `disk_config/iso.toml`: installer kickstart/user config.
 - `.github/workflows/build.yml`: build, push, and signing pipeline.

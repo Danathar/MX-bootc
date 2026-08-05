@@ -2,9 +2,15 @@
 
 set -ouex pipefail
 
-# FIXME: This entire script is far, far more complicated than it needs to be.
-# Replace me by deleting this entire thing and using upstream ostree/bootc packages
-# when they're ready.
+# FIXME: Replace this bootstrap with Debian packages when a Debian-compatible
+# upstream bootc release passes this repository's container lint and boot test.
+# bootc is pinned to the frostyard fork because this project currently relies on
+# its Debian compatibility work; the fork is not a long-term support promise.
+
+# renovate: datasource=git-refs depName=github.com/ostreedev/ostree
+OSTREE_REF="4672e91445451660eaa4405630692ade1b48c914" # v2026.2
+# renovate: datasource=git-refs depName=github.com/frostyard/bootc
+BOOTC_REF="cd2594a759f3efe5328c6235847b18fd75e561f5" # frostyard/main
 
 echo "::group::Executing install-bootc"
 trap 'echo "::endgroup::"' EXIT
@@ -33,8 +39,19 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --profile m
 # shellcheck source=/dev/null
 . "${RUSTUP_HOME}/env"
 
-# Build and install OSTree
-git clone https://github.com/ostreedev/ostree.git --depth 1 "${TMPROOT}/ostree"
+# Fetch one immutable source revision without relying on a moving branch.
+fetch_source() {
+  local repo="$1"
+  local ref="$2"
+  local destination="$3"
+  git init --quiet "${destination}"
+  git -C "${destination}" remote add origin "${repo}"
+  git -C "${destination}" fetch --quiet --depth 1 origin "${ref}"
+  git -C "${destination}" checkout --quiet --detach FETCH_HEAD
+}
+
+# Build and install OSTree.
+fetch_source https://github.com/ostreedev/ostree.git "${OSTREE_REF}" "${TMPROOT}/ostree"
 pushd "${TMPROOT}/ostree"
 git submodule update --init
 env NOCONFIGURE=1 ./autogen.sh
@@ -45,8 +62,8 @@ popd
 ln -svf /usr/lib/libostree* "/lib/$(arch)-linux-gnu/" || true
 ldconfig
 
-# Build and install Bootc
-git clone https://github.com/frostyard/bootc.git --depth 1 "${TMPROOT}/bootc"
+# Build and install Bootc.
+fetch_source https://github.com/frostyard/bootc.git "${BOOTC_REF}" "${TMPROOT}/bootc"
 pushd "${TMPROOT}/bootc"
 export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/share/pkgconfig
 make bin install-all

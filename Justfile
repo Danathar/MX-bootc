@@ -1,6 +1,7 @@
 export image_name := env("IMAGE_NAME", "mx25-kde-bootc")
 export default_tag := env("DEFAULT_TAG", "latest")
-export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest")
+export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest@sha256:2b52843ea2bfda73b0a08d97e76b734393b1d3a804681b9fabb26723bd3a2f0b")
+export base_image := env("BASE_IMAGE", "localhost/mx-bootc-base:v2026.2-cd2594a759f3")
 export output_dir := env("OUTPUT_DIR", "output")
 export use_custom_bootc_stage := env("USE_CUSTOM_BOOTC_STAGE", "1")
 
@@ -90,7 +91,7 @@ sudoif command *args:
 #
 
 # Build the image using the specified parameters
-build $target_image=image_name $tag=default_tag:
+build $target_image=image_name $tag=default_tag: _ensure-base
     #!/usr/bin/env bash
 
     BUILD_ARGS=()
@@ -100,10 +101,26 @@ build $target_image=image_name $tag=default_tag:
 
     podman build \
         "${BUILD_ARGS[@]}" \
+        --build-arg "BASE_IMAGE={{ base_image }}" \
         --pull=newer \
         --label "containers.bootc=1" \
         --tag "${target_image}:${tag}" \
         .
+
+# Build the expensive pinned bootc/ostree base image explicitly.
+build-base:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    podman build --file Containerfile.base --tag "{{ base_image }}" .
+
+_ensure-base:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if podman image exists "{{ base_image }}"; then
+        echo "Using existing base image {{ base_image }}"
+    else
+        just build-base
+    fi
 
 # Command: _rootful_load_image
 # Description: This script checks if the current user is root or running under sudo. If not, it attempts to resolve the image tag using podman inspect.

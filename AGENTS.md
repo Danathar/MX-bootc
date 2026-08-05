@@ -10,11 +10,12 @@ This repository builds a Debian trixie bootc image with MX KDE styling. It is no
 just check       # validate Just syntax
 just lint        # shellcheck all tracked shell files, including extensionless scripts
 just format      # format tracked shell files with shfmt
+just build-base  # build the pinned bootc/ostree base image once
 just build       # build the container image with podman
 just build-qcow2 # build a bootable qcow2 with bootc-image-builder
 ```
 
-The image build needs network access, Podman, and enough storage for Debian/MX packages and the bootc toolchain. Do not treat a documentation-only check as a substitute for an image build when `build_files/` or `Containerfile` changes.
+The image build needs network access, Podman, and enough storage for Debian/MX packages and the bootc toolchain. `just build` will reuse an existing local base image; run `just build-base` again when the pinned base inputs change. Do not treat a documentation-only check as a substitute for an image build when `build_files/`, `Containerfile`, or `Containerfile.base` changes.
 
 ## Change discipline
 
@@ -27,4 +28,3 @@ The image build needs network access, Podman, and enough storage for Debian/MX p
 ## Template-synced files
 
 `.github/workflows/template-sync.yml` can sync from the upstream image template. Repo-specific files are protected by `.templatesyncignore`; changes to those files should be reviewed against upstream template changes rather than overwritten blindly.
-

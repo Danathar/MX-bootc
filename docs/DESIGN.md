@@ -15,7 +15,7 @@ The image is intentionally built around bootc's model:
 
 MX packages and defaults were designed for a mutable Debian root, apt-driven upgrades, and MX's live/installer stack. Some are useful as data or desktop configuration; others are incompatible with an immutable deployment. The decisions are recorded in [MX-COMPAT.md](MX-COMPAT.md), and new packages should be evaluated there before being added.
 
-Debian does not currently provide the bootc/ostree combination this image needs, so the build temporarily compiles ostree and bootc. The bootc source is currently the `frostyard/bootc` fork because that is the source the project has historically used and the build depends on its Debian compatibility work. This is a temporary risk, not a guarantee of long-term support. The exit criterion is a Debian-compatible upstream bootc release (or packaged Debian build) that passes this repository's container lint and boot smoke test; at that point the fork should be removed and the source pinned to the upstream release.
+Debian does not currently provide the bootc/ostree combination this image needs, so the build temporarily compiles ostree and bootc in the separately published `Containerfile.base`. The source revisions are pinned together in `build_files/install-bootc` (`ostree` `v2026.2` and a frostyard/bootc commit). The bootc source is currently the `frostyard/bootc` fork because that is the source the project has historically used and the build depends on its Debian compatibility work. This is a temporary risk, not a guarantee of long-term support. The exit criterion is a Debian-compatible upstream bootc release (or packaged Debian build) that passes this repository's container lint and boot smoke test; at that point the fork should be removed and the source pinned to the upstream release.
 
 The image uses Debian SELinux policy to satisfy bootc-image-builder's labeling stage, but this project does not currently provide a complete targeted SELinux policy or claim an enforcing SELinux security posture. The resulting runtime position is effectively unconfined and must be treated as such until a tested policy exists.
 
@@ -24,4 +24,3 @@ The project selects systemd-boot and removes Debian's signed GRUB package. This 
 ## Quality bar
 
 The daily build is the current regression signal. Changes to image construction should also pass `just check` and `just lint`; changes that affect boot behavior should pass the headless QEMU smoke test when the required runner support is available. Each plan item should be landed as one small, independently revertible change.
-

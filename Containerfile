@@ -2,8 +2,9 @@
 FROM scratch AS ctx
 COPY build_files /
 
-# Bootc base files for Debian
-FROM docker.io/library/debian:trixie
+# Bootc/ostree are built in the separately published pinned base image.
+ARG BASE_IMAGE=localhost/mx-bootc-base:v2026.2-cd2594a759f3
+FROM ${BASE_IMAGE}
 
 COPY system_files /
 LABEL containers.bootc="1"
@@ -11,14 +12,12 @@ LABEL containers.bootc="1"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG BUILD_ID=${BUILD_ID}
 
-# Bootstrap bootc/ostree first, then apply MX KDE customizations.
+# Apply MX KDE customizations on top of the pinned bootc base.
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=cache,dst=/var/lib/apt \
     --mount=type=tmpfs,dst=/tmp \
-    /ctx/install-bootloader && \
-    /ctx/install-bootc && \
     /ctx/build.sh && \
     /ctx/build-initramfs && \
     /ctx/finalize
