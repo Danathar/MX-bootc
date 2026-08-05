@@ -212,6 +212,20 @@ apt_install_with_retry \
   plasma-look-and-feel-theme-mx \
   sddm-modified-init
 
+# MX tools that mutate an apt-managed root or create live media are not part of
+# this image's contract. Hide any menu entries pulled in indirectly by MX
+# defaults so users do not launch a known-incompatible tool by accident.
+for desktop in /usr/share/applications/*.desktop; do
+  [ -f "${desktop}" ] || continue
+  if grep -Eq '^Exec=.*(mx-snapshot|mx-installer|minstall|mx-packageinstaller|mx-repo-manager|mx-updater|apt-notifier|mx-boot-options|mx-cleanup)' "${desktop}"; then
+    if grep -q '^NoDisplay=' "${desktop}"; then
+      sed -i 's/^NoDisplay=.*/NoDisplay=true/' "${desktop}"
+    else
+      printf '\nNoDisplay=true\n' >> "${desktop}"
+    fi
+  fi
+done
+
 # Keep VM boots clean on non-NVIDIA hardware and with NetworkManager only.
 rm -f /etc/modules-load.d/nvidia.conf
 rm -f /etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service

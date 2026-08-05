@@ -153,11 +153,13 @@ jobs:
           ssh_cmd 'test -d /usr/lib/firmware && test -n "$(find /usr/lib/firmware -type f -print -quit)"'
           ssh_cmd 'flatpak remotes --system --columns=name | grep -Fxq flathub'
           ssh_cmd 'command -v distrobox'
-          ssh_cmd 'test -e /usr/lib/systemd/system/wpa_supplicant.service'
+          ssh_cmd 'test -e /usr/lib/systemd/system/wpa_supplicant.service && systemctl cat wpa_supplicant.service | grep -q "BusName="'
           ssh_cmd 'test "$(systemctl is-enabled bootc-fetch-apply-updates.timer)" = enabled'
           ssh_cmd 'sudo /usr/bin/bootc upgrade --check'
           ssh_cmd 'loginctl list-sessions --no-legend | grep -Eq "[[:space:]]mx[[:space:]]"'
           ssh_cmd 'loginctl list-sessions --no-legend | grep -Eiq "plasma|wayland|x11"'
+          ssh_cmd 'grep -Eiq "^DisplayServer=x11" /etc/sddm.conf.d/10-mx-bootc.conf'
+          ssh_cmd 'systemctl --global is-enabled pipewire.socket'
           echo 'Boot smoke test passed.'
 
       - name: Collect failure diagnostics
