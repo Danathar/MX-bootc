@@ -2,24 +2,28 @@
 name: Build disk images
 
 on:
+  workflow_call:
+    inputs:
+      image_ref:
+        description: "Container image to convert into disk images"
+        required: true
+        type: string
+      upload_to_s3:
+        description: "Upload disk images to S3"
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
-      upload-to-s3:
+      upload_to_s3:
         description: "Upload to S3"
         required: false
         default: false
         type: boolean
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'disk_config/disk.toml'
-      - 'disk_config/iso.toml'
-      - '.github/workflows/build-disk.yml'
-
 env:
   IMAGE_NAME: ${{ github.event.repository.name }}  # output of build.yml, keep in sync
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"  # do not edit
+  IMAGE_REF: ${{ inputs.image_ref || format('ghcr.io/{0}:latest', github.repository) }}
   DEFAULT_TAG: "latest"
   BIB_IMAGE: "quay.io/centos-bootc/bootc-image-builder:latest@sha256:2b52843ea2bfda73b0a08d97e76b734393b1d3a804681b9fabb26723bd3a2f0b"
 
@@ -65,7 +69,7 @@ jobs:
       - name: Render installer image reference
         if: matrix.disk-type == 'anaconda-iso'
         env:
-          IMAGE_REF: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
+          IMAGE_REF: ${{ env.IMAGE_REF }}
         run: |
           set -euo pipefail
           sed "s|@IMAGE_REF@|${IMAGE_REF}|g" disk_config/iso.toml > /tmp/iso.toml
@@ -80,13 +84,13 @@ jobs:
         with:
           builder-image: ${{ env.BIB_IMAGE }}
           config-file: ${{ matrix.disk-type == 'anaconda-iso' && '/tmp/iso.toml' || 'disk_config/disk.toml' }}
-          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
+          image: ${{ env.IMAGE_REF }}
           chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
           types: ${{ matrix.disk-type }}
           additional-args: --use-librepo=True
 
       - name: Upload disk images and Checksum to Job Artifacts
-        if: inputs.upload-to-s3 != true && github.event_name != 'pull_request'
+        if: inputs.upload_to_s3 != true && github.event_name != 'workflow_call'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           path: ${{ steps.build.outputs.output-directory }}
@@ -96,7 +100,7 @@ jobs:
           overwrite: true
 
       - name: Upload to S3
-        if: inputs.upload-to-s3 == true && github.event_name != 'pull_request'
+        if: inputs.upload_to_s3 == true && github.event_name != 'workflow_call'
         shell: bash
         env:
           RCLONE_CONFIG_S3_TYPE: s3

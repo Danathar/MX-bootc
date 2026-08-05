@@ -2,13 +2,6 @@
 name: Build bootc base image
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - Containerfile.base
-      - build_files/install-bootloader
-      - build_files/install-bootc
-      - .github/workflows/build-base.yml
   push:
     branches: [main]
     paths:

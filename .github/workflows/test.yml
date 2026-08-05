@@ -2,12 +2,22 @@
 name: Boot smoke test
 
 on:
-  pull_request:
+  workflow_call:
+    inputs:
+      image_ref:
+        description: "Container image to test"
+        required: true
+        type: string
   workflow_run:
     workflows: [Build container image]
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      image_ref:
+        description: "Optional container image to test"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -37,11 +47,12 @@ jobs:
 
       - name: Build or pull the image
         env:
-          IMAGE_REF: ghcr.io/${{ github.repository }}:latest
+          IMAGE_REF: ${{ inputs.image_ref || format('ghcr.io/{0}:latest', github.repository) }}
           BASE_IMAGE: localhost/mx-bootc-base:v2026.2-cd2594a759f3
+          BUILD_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.image_ref == '' }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${BUILD_LOCAL}" == "true" ]]; then
             sudo podman build --file Containerfile.base --tag "${BASE_IMAGE}" .
             sudo podman build --file Containerfile --build-arg "BASE_IMAGE=${BASE_IMAGE}" --tag localhost/mx-bootc:ci .
           else
