@@ -2,4 +2,5 @@ disable ModemManager.service
 disable cni-dhcp.service
 disable iwd.service
 disable rsync.service
-disable wpa_supplicant.service
+# NetworkManager activates wpa_supplicant over D-Bus for Wi-Fi. Do not disable
+# the unit here: a preset disable can prevent association on real hardware.

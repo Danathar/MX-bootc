@@ -28,12 +28,12 @@ RUN bootc container lint
 # Canonicalize defaults into /usr/etc and whiteout /etc in the committed layer.
 # /etc/hostname and /etc/resolv.conf are runtime bind-mounts during build and
 # cannot be removed directly, so use a whiteout to delete /etc in the image.
+# /etc/hosts is image-owned configuration and must remain in /usr/etc.
 RUN if [ -d /etc ]; then \
       rm -rf /usr/etc && \
       mkdir -p /usr/etc && \
       rsync -a \
         --exclude hostname \
-        --exclude hosts \
         --exclude resolv.conf \
         /etc/ /usr/etc/ && \
       : > /.wh.etc; \

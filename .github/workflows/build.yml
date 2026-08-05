@@ -64,6 +64,20 @@ jobs:
           # https://linux.die.net/man/1/date
           echo "date=$(date -u +%Y\-%m\-%d\T%H\:%M\:%S\Z)" >> $GITHUB_OUTPUT
 
+      - name: Capture previous package manifest
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mx-bootc-manifest
+          previous="${IMAGE_REGISTRY}/${IMAGE_NAME}:${DEFAULT_TAG}"
+          if podman pull "${previous}" >/dev/null 2>&1; then
+            podman run --rm --entrypoint /bin/cat "${previous}" \
+              /usr/share/mx-bootc-kde/desktop-packages.txt \
+              > /tmp/mx-bootc-manifest/previous.txt
+          else
+            echo 'No previous published image available.' > /tmp/mx-bootc-manifest/previous.txt
+          fi
+
       # Image metadata for https://artifacthub.io/ - This is optional but is highly recommended so we all can get a index of all the custom images
       # The metadata by itself is not going to do anything, you choose if you want your image to be on ArtifactHub or not.
       - name: Image Metadata
@@ -111,6 +125,40 @@ jobs:
           oci: false
           build-args: |
             BASE_IMAGE=${{ env.BASE_IMAGE }}
+
+      - name: Record package manifest and diff
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mx-bootc-manifest
+          podman run --rm --entrypoint /bin/cat \
+            "localhost/${IMAGE_NAME}:${DEFAULT_TAG}" \
+            /usr/share/mx-bootc-kde/desktop-packages.txt \
+            > /tmp/mx-bootc-manifest/current.txt
+          diff_status=0
+          diff -u /tmp/mx-bootc-manifest/previous.txt /tmp/mx-bootc-manifest/current.txt \
+            > /tmp/mx-bootc-manifest/diff.txt || diff_status=$?
+          {
+            echo '### Package manifest diff'
+            if [[ "${diff_status}" -eq 0 ]]; then
+              echo 'No package changes compared with the previous published image.'
+            elif [[ "${diff_status}" -eq 1 ]]; then
+              echo '```diff'
+              cat /tmp/mx-bootc-manifest/diff.txt
+              echo '```'
+            else
+              echo 'Manifest comparison failed; see the uploaded artifact.'
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload package manifests
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-manifest
+          path: /tmp/mx-bootc-manifest
+          if-no-files-found: warn
 
       # Rechunk is a script that we use on Universal Blue to make sure there isnt a single huge layer when your image gets published.
       # This does not make your image faster to download, just provides better resumability and fixes a few errors.

@@ -1,0 +1,13 @@
+[Unit]
+Description=Require the MX user's first-login password change
+Before=graphical.target
+After=local-fs.target
+ConditionPathExists=!/var/lib/mx-bootc/first-boot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/mx-bootc-first-boot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+state=/var/lib/mx-bootc/first-boot-complete
+if [ -e "${state}" ]; then
+  exit 0
+fi
+
+if id mx >/dev/null 2>&1; then
+  # The installer creates mx; force the example/install-time password to be
+  # replaced before the first interactive login.
+  chage -d 0 mx
+  install -d -m 0755 /var/lib/mx-bootc
+  touch "${state}"
+fi
