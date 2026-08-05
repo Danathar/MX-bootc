@@ -10,10 +10,17 @@ set -ouex pipefail
 # renovate: datasource=git-refs depName=github.com/ostreedev/ostree
 OSTREE_REF="4672e91445451660eaa4405630692ade1b48c914" # v2026.2
 # renovate: datasource=git-refs depName=github.com/frostyard/bootc
-BOOTC_REF="cd2594a759f3efe5328c6235847b18fd75e561f5" # frostyard/main
+BOOTC_REF="cd2594a759f3efe5328c6235847b18fd75e561f5" # main
+
+TMPROOT=/var/tmp/mx-bootc-build
+
+cleanup() {
+  rm -rf -- "${TMPROOT}"
+  echo "::endgroup::"
+}
 
 echo "::group::Executing install-bootc"
-trap 'echo "::endgroup::"' EXIT
+trap cleanup EXIT
 
 DEV_DEPS=(
   libcurl4-openssl-dev libzstd-dev libssl-dev pkg-config curl git build-essential meson
@@ -21,7 +28,6 @@ DEV_DEPS=(
   autoconf automake libtool libseccomp-dev libcap-dev libglib2.0-dev bison flex equivs gobject-introspection
 )
 
-TMPROOT=/var/tmp/mx-bootc-build
 mkdir -p "${TMPROOT}"
 export CARGO_HOME="${TMPROOT}/rust"
 export RUSTUP_HOME="${TMPROOT}/rust"
@@ -35,7 +41,7 @@ apt update -y
 apt install -y "${DEV_DEPS[@]}" ca-certificates libarchive13 --no-install-recommends
 
 # Set up rust build environment
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --profile minimal -y
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --profile minimal --no-modify-path -y
 # shellcheck source=/dev/null
 . "${RUSTUP_HOME}/env"
 

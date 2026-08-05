@@ -13,4 +13,3 @@ When reporting a runtime problem, include:
 - hardware details relevant to the failure
 
 Do not include secrets, private keys, or unredacted user data in issues or pull requests.
-

@@ -6,11 +6,9 @@ RUN mkdir -p /usr/etc/sddm.conf.d && \
     printf '%s\n' \
       '[Autologin]' \
       'User=mx' \
-      'Session=plasma.desktop' \
+      'Session=plasmax11.desktop' \
       'Relogin=true' \
       > /usr/etc/sddm.conf.d/99-bootc-smoke.conf
 
-# The distributed image intentionally expires the installer-created password;
-# the smoke image uses an injected SSH key and must be able to autologin.
-RUN mkdir -p /usr/etc/systemd/system && \
-    ln -sf /dev/null /usr/etc/systemd/system/mx-bootc-first-boot.service
+# Keep first-boot password-expiry behavior enabled so the smoke test exercises
+# the same login path as the distributed image.

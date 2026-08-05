@@ -10,4 +10,3 @@ rules:
     max: 140
   truthy:
     allowed-values: ['true', 'false', 'on', 'off']
-

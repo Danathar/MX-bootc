@@ -65,6 +65,7 @@ Default outputs:
 User creation and passwords should be configured in installer TOML/kickstart, not hardcoded into the container image:
 
 - `disk_config/iso.toml`
+- `disk_config/disk.toml`
 
 Current example in those files:
 
@@ -88,7 +89,6 @@ cosign verify --key cosign.pub ghcr.io/<your-github-user>/mx-bootc@sha256:<diges
 ```
 
 Do not treat a mutable tag such as `latest` as an integrity guarantee.
-They are not part of the immutable image build and therefore are not expected to be reset by a normal `bootc upgrade`.
 
 ## Important files
 

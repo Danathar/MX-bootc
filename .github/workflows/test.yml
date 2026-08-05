@@ -38,10 +38,12 @@ jobs:
       - name: Build or pull the image
         env:
           IMAGE_REF: ghcr.io/${{ github.repository }}:latest
+          BASE_IMAGE: localhost/mx-bootc-base:v2026.2-cd2594a759f3
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            sudo podman build --file Containerfile --tag localhost/mx-bootc:ci .
+            sudo podman build --file Containerfile.base --tag "${BASE_IMAGE}" .
+            sudo podman build --file Containerfile --build-arg "BASE_IMAGE=${BASE_IMAGE}" --tag localhost/mx-bootc:ci .
           else
             echo "${{ github.token }}" | sudo podman login ghcr.io --username github-actions --password-stdin
             sudo podman pull "${IMAGE_REF,,}"
@@ -159,7 +161,7 @@ jobs:
           ssh_cmd 'test "$(systemctl is-enabled bootc-fetch-apply-updates.timer)" = enabled'
           ssh_cmd 'sudo /usr/bin/bootc upgrade --check'
           ssh_cmd 'loginctl list-sessions --no-legend | grep -Eq "[[:space:]]mx[[:space:]]"'
-          ssh_cmd 'loginctl list-sessions --no-legend | grep -Eiq "plasma|wayland|x11"'
+          ssh_cmd 'session_id="$(loginctl list-sessions --no-legend | awk -v user=mx "\$3 == user { print \$1; exit }")"; test -n "${session_id}"; test "$(loginctl show-session "${session_id}" -p Type --value)" = x11; loginctl show-session "${session_id}" -p Desktop --value | grep -Eiq "plasma|kde"'
           ssh_cmd 'grep -Eiq "^DisplayServer=x11" /etc/sddm.conf.d/10-mx-bootc.conf'
           ssh_cmd 'systemctl --global is-enabled pipewire.socket'
           echo 'Boot smoke test passed.'

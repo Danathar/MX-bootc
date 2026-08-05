@@ -22,4 +22,3 @@ This image borrows MX's package selection, artwork, and desktop defaults. It doe
 | MX live/installer menu entries | keep only when valid | Dead entries must be hidden with `NoDisplay=true` rather than left to fail. |
 
 This matrix is a design contract, not a claim that every package is currently installed. When a package is added or removed, update the relevant row and explain the image-model impact in the change description.
-
