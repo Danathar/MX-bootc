@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible problem with the image or build.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Bootc status and failure state
+      description: Paste bootc status, bootc version, and systemctl --failed output. Redact secrets.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: image
+    attributes:
+      label: Image reference or commit
+    validations:
+      required: true
+

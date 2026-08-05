@@ -3,6 +3,8 @@
 set -ouex pipefail
 
 # Prepare mutable mountpoints expected by bootc.
+# These are bootc-managed mutable mountpoints, not host directories.
+# shellcheck disable=SC2114
 rm -rf /boot /home /root /srv
 mkdir /boot /home /root /srv
 

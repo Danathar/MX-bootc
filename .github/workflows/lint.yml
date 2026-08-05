@@ -1,0 +1,32 @@
+---
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+
+      - name: Install linters
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes just shellcheck shfmt yamllint
+
+      - name: Check Just syntax
+        run: just check
+
+      - name: Shellcheck
+        run: just lint
+
+      - name: YAML lint
+        run: yamllint -c .yamllint.yml .github/workflows .github/ISSUE_TEMPLATE

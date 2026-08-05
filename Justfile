@@ -323,26 +323,32 @@ spawn-vm rebuild="0" type="qcow2" ram="6G":
       --vsock=false --pass-ssh-key=false \
       -i {{ output_dir }}/**/*.{{ type }}
 
-# Runs shell check on all Bash scripts
+# Runs shellcheck on shell scripts identified by their shebang.
 lint:
     #!/usr/bin/env bash
     set -eoux pipefail
-    # Check if shellcheck is installed
     if ! command -v shellcheck &> /dev/null; then
         echo "shellcheck could not be found. Please install it."
         exit 1
     fi
-    # Run shellcheck on all Bash scripts
-    /usr/bin/find . -iname "*.sh" -type f -exec shellcheck "{}" ';'
+    mapfile -t shell_files < <(git ls-files -z | xargs -0 -r -n1 bash -c 'file="$1"; if [[ -f "$file" ]] && grep -q "^#!.*\\(ba\\)\\?sh" "$file"; then printf "%s\\n" "$file"; fi' bash)
+    if ((${#shell_files[@]} == 0)); then
+        echo "No shell scripts found."
+        exit 0
+    fi
+    shellcheck "${shell_files[@]}"
 
-# Runs shfmt on all Bash scripts
+# Formats shell scripts identified by their shebang.
 format:
     #!/usr/bin/env bash
     set -eoux pipefail
-    # Check if shfmt is installed
     if ! command -v shfmt &> /dev/null; then
-        echo "shellcheck could not be found. Please install it."
+        echo "shfmt could not be found. Please install it."
         exit 1
     fi
-    # Run shfmt on all Bash scripts
-    /usr/bin/find . -iname "*.sh" -type f -exec shfmt --write "{}" ';'
+    mapfile -t shell_files < <(git ls-files -z | xargs -0 -r -n1 bash -c 'file="$1"; if [[ -f "$file" ]] && grep -q "^#!.*\\(ba\\)\\?sh" "$file"; then printf "%s\\n" "$file"; fi' bash)
+    if ((${#shell_files[@]} == 0)); then
+        echo "No shell scripts found."
+        exit 0
+    fi
+    shfmt --write "${shell_files[@]}"

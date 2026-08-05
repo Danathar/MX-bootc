@@ -54,6 +54,7 @@ apt-get install -y \
   iproute2 \
   iputils-ping \
   network-manager \
+  openssh-server \
   parted \
   rsync \
   skopeo \
@@ -192,6 +193,7 @@ fi
 
 systemctl enable NetworkManager.service
 systemctl enable sddm.service
+systemctl enable ssh.service
 
 mkdir -p /usr/share/mx-bootc-kde
 apt list --installed > /usr/share/mx-bootc-kde/desktop-packages.txt
