@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome to MX bootc
+Comment=Explain updates and software installation on this immutable desktop
+Exec=/usr/bin/kdialog --title "Welcome to MX bootc" --msgbox "This system updates by bootc deployments and reboot. Use Discover and Flathub for desktop apps, and distrobox with podman for CLI or development packages. Runtime apt changes are not supported."
+OnlyShowIn=KDE;
+X-KDE-autostart-after=panel

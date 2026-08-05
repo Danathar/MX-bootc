@@ -1,0 +1,54 @@
+---
+name: Build bootc base image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Containerfile.base
+      - build_files/install-bootloader
+      - build_files/install-bootc
+      - .github/workflows/build-base.yml
+  schedule:
+    - cron: '30 10 * * 1'
+  workflow_dispatch:
+
+env:
+  BASE_TAG: v2026.2-cd2594a759f3
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+
+      - name: Build base image
+        uses: redhat-actions/buildah-build@3a51aade9afa17e5c78256bcbe2e1ee08c7b995b  # v3.0.2
+        with:
+          containerfiles: Containerfile.base
+          image: mx-bootc-base
+          tags: ${{ env.BASE_TAG }}
+          oci: false
+
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c  # v4.5.2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push base image
+        if: github.event_name != 'pull_request'
+        uses: redhat-actions/push-to-registry@94ade333c38ecc0e60e94785125d9a52ca423b37  # v3.0.0
+        with:
+          registry: ghcr.io/${{ github.repository_owner }}
+          image: mx-bootc-base
+          tags: ${{ env.BASE_TAG }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}

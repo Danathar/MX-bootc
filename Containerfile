@@ -1,9 +1,12 @@
+# Build argument used by the final stage; it must precede the first FROM.
+ARG BASE_IMAGE=localhost/mx-bootc-base:v2026.2-cd2594a759f3
+
 # Allow build scripts to be referenced without being copied into the final image
 FROM scratch AS ctx
 COPY build_files /
 
-# Bootc base files for Debian
-FROM docker.io/library/debian:trixie
+# Bootc/ostree are built in the separately published pinned base image.
+FROM ${BASE_IMAGE}
 
 COPY system_files /
 LABEL containers.bootc="1"
@@ -11,14 +14,12 @@ LABEL containers.bootc="1"
 ARG DEBIAN_FRONTEND=noninteractive
 ARG BUILD_ID=${BUILD_ID}
 
-# Bootstrap bootc/ostree first, then apply MX KDE customizations.
+# Apply MX KDE customizations on top of the pinned bootc base.
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=cache,dst=/var/lib/apt \
     --mount=type=tmpfs,dst=/tmp \
-    /ctx/install-bootloader && \
-    /ctx/install-bootc && \
     /ctx/build.sh && \
     /ctx/build-initramfs && \
     /ctx/finalize
@@ -29,12 +30,12 @@ RUN bootc container lint
 # Canonicalize defaults into /usr/etc and whiteout /etc in the committed layer.
 # /etc/hostname and /etc/resolv.conf are runtime bind-mounts during build and
 # cannot be removed directly, so use a whiteout to delete /etc in the image.
+# /etc/hosts is image-owned configuration and must remain in /usr/etc.
 RUN if [ -d /etc ]; then \
       rm -rf /usr/etc && \
       mkdir -p /usr/etc && \
       rsync -a \
         --exclude hostname \
-        --exclude hosts \
         --exclude resolv.conf \
         /etc/ /usr/etc/ && \
       : > /.wh.etc; \

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+if /usr/bin/sudo /usr/bin/bootc status 2>/dev/null | grep -Eiq 'staged|pending'; then
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send --urgency=normal \
+      'System update ready' \
+      'A new bootc deployment is staged. Restart the computer to apply it.'
+  fi
+fi

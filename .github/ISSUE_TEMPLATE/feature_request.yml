@@ -1,0 +1,17 @@
+name: Feature request
+description: Propose a focused, bootc-compatible improvement.
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the user problem and the smallest useful change.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Bootc and MX compatibility
+      description: Explain how this avoids mutable-root assumptions and whether MX-COMPAT.md needs an update.
+    validations:
+      required: true

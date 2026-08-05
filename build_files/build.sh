@@ -54,12 +54,67 @@ apt-get install -y \
   iproute2 \
   iputils-ping \
   network-manager \
+  openssh-server \
   parted \
+  podman \
   rsync \
   skopeo \
   sudo \
   xfsprogs \
   zstd
+
+# Hardware support for common Intel, AMD, Realtek, and Atheros systems.
+# Keep the split packages explicit so the image manifest shows why firmware is
+# present instead of relying on a distribution umbrella package.
+apt_install_with_retry \
+  firmware-atheros \
+  firmware-amd-graphics \
+  firmware-iwlwifi \
+  firmware-misc-nonfree \
+  firmware-realtek \
+  intel-microcode \
+  amd64-microcode
+
+# Desktop software paths for an immutable system: Flatpak for applications and
+# distrobox/podman for development and CLI packages.
+apt_install_with_retry \
+  distrobox \
+  flatpak \
+  libnotify-bin \
+  plasma-discover \
+  plasma-discover-backend-flatpak
+
+# Avoid presenting a PackageKit apt backend that cannot mutate this image.
+apt-get purge -y plasma-discover-backend-packagekit || true
+flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+# Desktop completeness: sound, printing/scanning, Bluetooth, graphics, power,
+# firmware updates, locales, fonts, and a boot splash.
+apt_install_with_retry \
+  bluez \
+  bluez-firmware \
+  bluedevil \
+  cups \
+  fonts-dejavu \
+  fwupd \
+  intel-media-va-driver-non-free \
+  libva2 \
+  locales \
+  mesa-vulkan-drivers \
+  pipewire \
+  pipewire-pulse \
+  plymouth \
+  plymouth-themes \
+  power-profiles-daemon \
+  sane-airscan \
+  system-config-printer \
+  thermald \
+  wireplumber
+
+# Generate the locale at build time; immutable images cannot rely on a first
+# boot locale-generation step.
+sed -ri 's/^# (en_US.UTF-8 UTF-8)/\1/' /etc/locale.gen
+locale-gen en_US.UTF-8
 
 # bootc-image-builder runs an SELinux labeling stage during disk image creation.
 # Debian usually ships policy under /etc/selinux/default, while osbuild expects
@@ -130,6 +185,13 @@ apt-get update -y
 # Install the kernel from the MX repository (AHS/Liquorix version)
 apt_install_with_retry linux-image-liquorix-amd64
 
+# Prevent a future package addition from silently replacing systemd with a
+# SysV init implementation.
+if ! dpkg-query -W -f='${Status}' systemd-sysv 2>/dev/null | grep -q 'install ok installed'; then
+  echo "systemd-sysv is required but is not installed" >&2
+  exit 1
+fi
+
 # KDE stack plus MX KDE defaults/tools.
 apt_install_with_retry \
   kde-standard \
@@ -149,6 +211,20 @@ apt_install_with_retry \
   plasma-modified-defaults-mx \
   plasma-look-and-feel-theme-mx \
   sddm-modified-init
+
+# MX tools that mutate an apt-managed root or create live media are not part of
+# this image's contract. Hide any menu entries pulled in indirectly by MX
+# defaults so users do not launch a known-incompatible tool by accident.
+for desktop in /usr/share/applications/*.desktop; do
+  [ -f "${desktop}" ] || continue
+  if grep -Eq '^Exec=.*(mx-snapshot|mx-installer|minstall|mx-packageinstaller|mx-repo-manager|mx-updater|apt-notifier|mx-boot-options|mx-cleanup)' "${desktop}"; then
+    if grep -q '^NoDisplay=' "${desktop}"; then
+      sed -i 's/^NoDisplay=.*/NoDisplay=true/' "${desktop}"
+    else
+      printf '\nNoDisplay=true\n' >> "${desktop}"
+    fi
+  fi
+done
 
 # Keep VM boots clean on non-NVIDIA hardware and with NetworkManager only.
 rm -f /etc/modules-load.d/nvidia.conf
@@ -192,6 +268,18 @@ fi
 
 systemctl enable NetworkManager.service
 systemctl enable sddm.service
+systemctl enable ssh.service
+systemctl enable cups.service
+systemctl enable bluetooth.service
+systemctl enable power-profiles-daemon.service
+systemctl enable thermald.service
+systemctl enable bootc-fetch-apply-updates.timer
+systemctl enable mx-bootc-first-boot.service
+systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service
+
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+  plymouth-set-default-theme spinner || true
+fi
 
 mkdir -p /usr/share/mx-bootc-kde
 apt list --installed > /usr/share/mx-bootc-kde/desktop-packages.txt

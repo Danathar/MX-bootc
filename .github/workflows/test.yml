@@ -1,0 +1,218 @@
+---
+name: Boot smoke test
+
+on:
+  workflow_call:
+    inputs:
+      image_ref:
+        description: "Container image to test"
+        required: true
+        type: string
+  workflow_run:
+    workflows: [Build container image]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_ref:
+        description: "Optional container image to test"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  boot:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Install VM tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes openssh-client podman qemu-system-x86 ovmf rsync sshpass
+
+      - name: Create test SSH key
+        run: |
+          set -euo pipefail
+          ssh-keygen -q -t ed25519 -N '' -f /tmp/mx-bootc-smoke-key
+          chmod 600 /tmp/mx-bootc-smoke-key
+
+      - name: Build or pull the image
+        env:
+          IMAGE_REF: ${{ inputs.image_ref || format('ghcr.io/{0}:latest', github.repository) }}
+          BASE_IMAGE: localhost/mx-bootc-base:v2026.2-cd2594a759f3
+          BUILD_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.image_ref == '' }}
+        run: |
+          set -euo pipefail
+          if [[ "${BUILD_LOCAL}" == "true" ]]; then
+            sudo podman build --file Containerfile.base --tag "${BASE_IMAGE}" .
+            sudo podman build --file Containerfile --build-arg "BASE_IMAGE=${BASE_IMAGE}" --tag localhost/mx-bootc:ci .
+          else
+            echo "${{ github.token }}" | sudo podman login ghcr.io --username github-actions --password-stdin
+            sudo podman pull "${IMAGE_REF,,}"
+            sudo podman tag "${IMAGE_REF,,}" localhost/mx-bootc:ci
+          fi
+          sudo podman build --file Containerfile.smoke --tag localhost/mx-bootc-smoke:ci .
+
+      - name: Render smoke-test disk configuration
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mx-bootc-smoke
+          smoke_key="$(< /tmp/mx-bootc-smoke-key.pub)"
+          awk -v key="${smoke_key}" '$0 == "name = \"mx\"" { print; print "key = \"" key "\""; next } { print }' \
+            disk_config/disk.toml > /tmp/mx-bootc-smoke/disk.toml
+
+      - name: Build qcow2 image
+        env:
+          BIB_IMAGE: quay.io/centos-bootc/bootc-image-builder:latest@sha256:2b52843ea2bfda73b0a08d97e76b734393b1d3a804681b9fabb26723bd3a2f0b
+        run: |
+          set -euo pipefail
+          stage_dir=/usr/lib/osbuild/stages
+          install_stage="$PWD/disk_config/org.osbuild.bootc.install-to-filesystem:${stage_dir}/org.osbuild.bootc.install-to-filesystem:ro"
+          install_meta_source="$PWD/disk_config/org.osbuild.bootc.install-to-filesystem.meta.json"
+          install_meta="${install_meta_source}:${stage_dir}/org.osbuild.bootc.install-to-filesystem.meta.json:ro"
+          sudo mkdir -p /tmp/mx-bootc-smoke/output /tmp/mx-bootc-smoke/store
+          sudo podman run --rm --privileged --pull=newer \
+            --net=host \
+            --security-opt label=type:unconfined_t \
+            -v "${install_stage}" \
+            -v "${install_meta}" \
+            -v "$PWD/disk_config/org.osbuild.selinux:/usr/lib/osbuild/stages/org.osbuild.selinux:ro" \
+            -v /tmp/mx-bootc-smoke/disk.toml:/config.toml:ro \
+            -v /tmp/mx-bootc-smoke/output:/output \
+            -v /tmp/mx-bootc-smoke/store:/sysroot/ostree/bootc/storage:z \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            "${BIB_IMAGE}" \
+            --type qcow2 --use-librepo=True --rootfs=btrfs localhost/mx-bootc-smoke:ci
+          qcow2="$(find /tmp/mx-bootc-smoke/output -type f -name '*.qcow2' -print -quit)"
+          test -n "${qcow2}"
+          cp "${qcow2}" /tmp/mx-bootc-smoke/disk.qcow2
+
+      - name: Boot and assert the system
+        id: smoke
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          serial=/tmp/mx-bootc-smoke/serial.log
+          qemu_pid=''
+          diagnostic_command='journalctl -b --no-pager; '
+          diagnostic_command+='echo "--- failed units ---"; '
+          diagnostic_command+='systemctl --failed --no-pager; '
+          diagnostic_command+='echo "--- bootc ---"; bootc status'
+          collect_diagnostics() {
+            ssh -i /tmp/mx-bootc-smoke-key -p 2222 \
+              -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              mx@127.0.0.1 "${diagnostic_command}" \
+              > /tmp/mx-bootc-smoke/journal.log 2>&1 || true
+          }
+          cleanup() {
+            if [[ -n "${qemu_pid}" ]]; then
+              sudo kill "${qemu_pid}" 2>/dev/null || true
+              sudo wait "${qemu_pid}" 2>/dev/null || true
+            fi
+          }
+          on_exit() {
+            status=$?
+            if [[ "${status}" -ne 0 ]]; then
+              collect_diagnostics
+            fi
+            cleanup
+            exit "${status}"
+          }
+          trap on_exit EXIT
+
+          sudo qemu-system-x86_64 \
+            -machine q35,accel=tcg \
+            -m 4096 -smp 2 \
+            -bios /usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive "file=/tmp/mx-bootc-smoke/disk.qcow2,if=virtio,format=qcow2" \
+            -netdev user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22 \
+            -device virtio-net-pci,netdev=net0 \
+            -serial "file=${serial}" \
+            -display none -no-reboot &
+          qemu_pid=$!
+
+          ssh_cmd() {
+            ssh -i /tmp/mx-bootc-smoke-key -p 2222 \
+              -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/dev/null mx@127.0.0.1 "$@"
+          }
+
+          ready=0
+          for _ in $(seq 1 90); do
+            if ssh_cmd true >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "${ready}" -ne 1 ]]; then
+            echo 'SSH did not become available before the timeout' >&2
+            exit 1
+          fi
+
+          ssh_cmd 'test "$(systemctl is-active graphical.target)" = active'
+          failed_units="$(ssh_cmd systemctl --failed --no-legend --plain --no-pager | awk '{print $1}' | sed '/^$/d')"
+          while IFS= read -r unit; do
+            [[ -z "${unit}" ]] && continue
+            if ! grep -Fqx "${unit}" test/known-failed-units.txt; then
+              echo "Unexpected failed systemd unit: ${unit}" >&2
+              exit 1
+            fi
+          done <<< "${failed_units}"
+          ssh_cmd 'bootc status | grep -Eiq "booted|staged|current"'
+          ssh_cmd 'test -s /etc/hosts && grep -Eq "(^|[[:space:]])localhost([[:space:]]|$)" /etc/hosts'
+          ssh_cmd 'test -s /etc/machine-id && ! grep -qx uninitialized /etc/machine-id'
+          ssh_cmd 'test -e /etc/resolv.conf && test -r /etc/resolv.conf'
+          ssh_cmd 'test "$(systemctl is-active sddm.service)" = active'
+          ssh_cmd 'test -d /usr/lib/firmware && test -n "$(find /usr/lib/firmware -type f -print -quit)"'
+          ssh_cmd 'flatpak remotes --system --columns=name | grep -Fxq flathub'
+          ssh_cmd 'command -v distrobox'
+          ssh_cmd 'test -e /usr/lib/systemd/system/wpa_supplicant.service && systemctl cat wpa_supplicant.service | grep -q "BusName="'
+          ssh_cmd 'test "$(systemctl is-enabled bootc-fetch-apply-updates.timer)" = enabled'
+          ssh_cmd 'sudo /usr/bin/bootc upgrade --check'
+          ssh_cmd 'loginctl list-sessions --no-legend | grep -Eq "[[:space:]]mx[[:space:]]"'
+          session_check='session_id="$(loginctl list-sessions --no-legend |
+            awk -v user=mx "\$3 == user { print \$1; exit }")"
+            test -n "${session_id}"
+            test "$(loginctl show-session "${session_id}" -p Type --value)" = x11
+            loginctl show-session "${session_id}" -p Desktop --value |
+              grep -Eiq "plasma|kde"'
+          ssh_cmd "${session_check}"
+          ssh_cmd 'grep -Eiq "^DisplayServer=x11" /etc/sddm.conf.d/10-mx-bootc.conf'
+          ssh_cmd 'systemctl --global is-enabled pipewire.socket'
+          echo 'Boot smoke test passed.'
+
+      - name: Collect failure diagnostics
+        if: steps.smoke.outcome == 'failure'
+        run: |
+          set +e
+          diagnostic_command='journalctl -b --no-pager; '
+          diagnostic_command+='echo "--- failed units ---"; '
+          diagnostic_command+='systemctl --failed --no-pager; '
+          diagnostic_command+='echo "--- bootc ---"; bootc status'
+          ssh -i /tmp/mx-bootc-smoke-key -p 2222 \
+            -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            mx@127.0.0.1 "${diagnostic_command}" \
+            > /tmp/mx-bootc-smoke/journal.log 2>&1
+          sudo cp /tmp/mx-bootc-smoke/serial.log /tmp/mx-bootc-smoke/serial-captured.log 2>/dev/null || true
+
+      - name: Upload smoke-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: boot-smoke-diagnostics
+          path: /tmp/mx-bootc-smoke/*.log
+          if-no-files-found: warn
+
+      - name: Fail on smoke-test failure
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1

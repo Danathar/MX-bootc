@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=MX bootc update notification
+Comment=Notify when a bootc deployment is staged
+Exec=/usr/libexec/mx-bootc-update-notify
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=1

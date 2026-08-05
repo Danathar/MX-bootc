@@ -6,16 +6,41 @@
 
   "rebaseWhen": "never",
 
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^build_files/install-bootc$"],
+      "matchStrings": ["# renovate: datasource=git-refs depName=(?<depName>github.com/ostreedev/ostree)\\nOSTREE_REF=\\\"(?<currentDigest>[0-9a-f]+)\\\" # (?<currentValue>[^\\s]+)"],
+      "datasourceTemplate": "git-refs",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^build_files/install-bootc$"],
+      "matchStrings": ["# renovate: datasource=git-refs depName=(?<depName>github.com/frostyard/bootc)\\nBOOTC_REF=\\\"(?<currentDigest>[0-9a-f]+)\\\" # (?<currentValue>[^\\s]+)"],
+      "datasourceTemplate": "git-refs",
+      "versioningTemplate": "loose"
+    }
+  ],
+
   "packageRules": [
     {
       "automerge": true,
       "matchUpdateTypes": ["pin", "pinDigest"]
     },
     {
-      "enabled": false,
-      "matchUpdateTypes": ["digest", "pinDigest", "pin"],
-      "matchDepTypes": ["container"],
-      "matchFileNames": [".github/workflows/**.yaml", ".github/workflows/**.yml"],
+      "description": "Keep image and build-tool inputs current",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": [
+        "docker.io/library/debian",
+        "quay.io/centos-bootc/bootc-image-builder"
+      ],
+      "enabled": true
     },
+    {
+      "description": "Keep pinned source revisions current",
+      "matchFileNames": ["build_files/install-bootc"],
+      "enabled": true
+    }
   ]
 }

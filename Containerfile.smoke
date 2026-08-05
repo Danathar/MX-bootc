@@ -1,0 +1,14 @@
+# Test-only derivative used by .github/workflows/test.yml.
+# Keep the autologin configuration out of the distributed image.
+FROM localhost/mx-bootc:ci
+
+RUN mkdir -p /usr/etc/sddm.conf.d && \
+    printf '%s\n' \
+      '[Autologin]' \
+      'User=mx' \
+      'Session=plasmax11.desktop' \
+      'Relogin=true' \
+      > /usr/etc/sddm.conf.d/99-bootc-smoke.conf
+
+# Keep first-boot password-expiry behavior enabled so the smoke test exercises
+# the same login path as the distributed image.

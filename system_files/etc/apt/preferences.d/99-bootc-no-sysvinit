@@ -1,0 +1,3 @@
+Package: sysvinit sysvinit-core sysv-rc openrc
+Pin: version *
+Pin-Priority: -1
