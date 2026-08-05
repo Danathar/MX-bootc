@@ -1,9 +1,11 @@
+# Build argument used by the final stage; it must precede the first FROM.
+ARG BASE_IMAGE=localhost/mx-bootc-base:v2026.2-cd2594a759f3
+
 # Allow build scripts to be referenced without being copied into the final image
 FROM scratch AS ctx
 COPY build_files /
 
 # Bootc/ostree are built in the separately published pinned base image.
-ARG BASE_IMAGE=localhost/mx-bootc-base:v2026.2-cd2594a759f3
 FROM ${BASE_IMAGE}
 
 COPY system_files /

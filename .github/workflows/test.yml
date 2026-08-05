@@ -58,6 +58,8 @@ jobs:
             disk_config/disk.toml > /tmp/mx-bootc-smoke/disk.toml
 
       - name: Build qcow2 image
+        env:
+          BIB_IMAGE: quay.io/centos-bootc/bootc-image-builder:latest@sha256:2b52843ea2bfda73b0a08d97e76b734393b1d3a804681b9fabb26723bd3a2f0b
         run: |
           set -euo pipefail
           sudo mkdir -p /tmp/mx-bootc-smoke/output /tmp/mx-bootc-smoke/store
@@ -71,7 +73,7 @@ jobs:
             -v /tmp/mx-bootc-smoke/output:/output \
             -v /tmp/mx-bootc-smoke/store:/sysroot/ostree/bootc/storage:z \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
-            quay.io/centos-bootc/bootc-image-builder:latest \
+            "${BIB_IMAGE}" \
             --type qcow2 --use-librepo=True --rootfs=btrfs localhost/mx-bootc-smoke:ci
           qcow2="$(find /tmp/mx-bootc-smoke/output -type f -name '*.qcow2' -print -quit)"
           test -n "${qcow2}"
