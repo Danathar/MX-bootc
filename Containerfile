@@ -3,7 +3,7 @@ FROM scratch AS ctx
 COPY build_files /
 
 # Bootc base files for Debian
-FROM docker.io/library/debian:trixie
+FROM docker.io/library/debian:trixie@sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5
 
 COPY system_files /
 LABEL containers.bootc="1"
